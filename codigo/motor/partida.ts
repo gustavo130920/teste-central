@@ -7,7 +7,8 @@ import { montarTime, prepararTime, retirarExpulso, retirarLesionado, substituir 
 import { chanceLesao, chanceLesaoFaltaDura, semanasFora, sortearGravidade } from './lesoes.ts';
 import { chanceForaDePosicao } from './plano.ts';
 import { decidirReacao, escolherTrocas, falaIntervalo } from './pausas.ts';
-import { GDD, PROVISORIO } from './parametros.ts';
+import { GDD, PROVISORIO, RESPALDO } from './parametros.ts';
+import { NOTA, fecharNotas, pontuarLance } from './notas.ts';
 import type { Acao, AcaoDisputa, TipoChute } from './parametros.ts';
 import { criarRng } from './rng.ts';
 import type { Rng } from './rng.ts';
@@ -56,6 +57,7 @@ interface DadosLance { jogador?: Escalado | null; jogador2?: Escalado | null; go
 function registrar(st: Estado, tema: string, lance: string, time: 0 | 1, d: DadosLance): void {
   const j = d.jogador ?? null;
   const zonaLance = d.destino ?? d.origem ?? null;
+  pontuarLance(st.t, { tema, lance, time, jogador: d.jogador, jogador2: d.jogador2, goleiro: d.goleiro, zona: zonaLance, chance: d.chance });
   st.lances.push({
     minuto: st.minuto, acrescimo: st.acrescimo, bloco: st.bloco, cadeia: st.cadeia, tema, lance, time,
     clube: st.t[time].clube.id,
@@ -232,6 +234,7 @@ interface Elo {
 
 function expulsar(st: Estado, t: TimeEmCampo, e: Escalado, tipo: NonNullable<Escalado['expulso']>): void {
   e.expulso = tipo;
+  e.nota += NOTA.vermelho;
   st.est[t.indice].vermelhos += 1;
   if (tipo === 'direto') st.est[t.indice].cartoes += 1;
   retirarExpulso(t, e, st.tatica, st.rng, st.classico);
@@ -239,6 +242,7 @@ function expulsar(st: Estado, t: TimeEmCampo, e: Escalado, tipo: NonNullable<Esc
 
 function aplicarAmarelo(st: Estado, t: TimeEmCampo, e: Escalado, narrar: boolean): void {
   e.amarelos += 1;
+  e.nota += NOTA.amarelo;
   st.est[t.indice].cartoes += 1;
   st.est[t.indice].amarelos += 1;
   if (!temQualidade(e, 'Gelo')) mudarMoral(t, [e], PROVISORIO.moralCartao);
@@ -294,7 +298,7 @@ function sortearLesoesDoBloco(st: Estado, cadeias: number): LesaoAgendada[] {
   const res: LesaoAgendada[] = [];
   for (const time of [0, 1] as const) {
     for (const e of st.t[time].escalados) {
-      if (st.rng.pct(chanceLesao(lerAtributo(e, 'Les'), e.energia))) res.push({ cadeia: st.rng.int(0, cadeias - 1), time, e });
+      if (st.rng.pct(chanceLesao(lerAtributo(e, 'Les'), e.energia, st.t[time].apoio.prevencao))) res.push({ cadeia: st.rng.int(0, cadeias - 1), time, e });
     }
   }
   return res;
@@ -326,7 +330,7 @@ function cartaoDaFalta(st: Estado, x: Elo): void {
     else aplicarVermelho(st, atk, portador);
   }
   // Falta dura sofrida (GDD 8). Depois do revide: quem foi expulso nele já não está em campo.
-  if (atk.escalados.includes(portador) && st.rng.pct(chanceLesaoFaltaDura(lerAtributo(portador, 'Les'), portador.energia))) lesionar(st, atk, portador, 'faltaDura');
+  if (atk.escalados.includes(portador) && st.rng.pct(chanceLesaoFaltaDura(lerAtributo(portador, 'Les'), portador.energia, atk.apoio.prevencao))) lesionar(st, atk, portador, 'faltaDura');
 }
 
 /** Decisivo: do minuto 75 em diante, com empate ou diferença de 1 gol (Anexo A). */
@@ -342,7 +346,7 @@ function cobrarPenalti(st: Estado, x: Elo): Fim {
   const batedor = escolherBatedor(atk);
   const gol = def.goleiro;
   const vBat = valorJogador(batedor, ['BP', 'Comp'], (batedor.j.tracos.includes('Cobrador de pênalti') ? p.traco : 0) + bonusDecisivo(st, batedor));
-  const vGol = valorJogador(gol, ['Ref', 'Agi'], (gol.j.tracos.includes('Pegador de pênalti') ? p.traco : 0) + PROVISORIO.estudoBatedores);
+  const vGol = valorJogador(gol, ['Ref', 'Agi'], (gol.j.tracos.includes('Pegador de pênalti') ? p.traco : 0) + def.apoio.estudoBatedores);
   const chance = chancePenalti(vBat, vGol);
   const e = st.est[iAtk];
   e.penaltis += 1;
@@ -763,12 +767,13 @@ function narrarClima(st: Estado, i: 0 | 1, antes: number): void {
 
 function fimDeBloco(st: Estado, b: number, inicioImpeto: [number, number]): void {
   for (const i of [0, 1] as const) {
+    st.t[i].ajusteFraco = false;
     for (const e of st.t[i].escalados) e.energia = Math.max(0, e.energia - gastoBloco(e, st.t[i]));
     fogoPorContaPropria(st, i);
     tecnicoPerdeACabeca(st, i);
     narrarClima(st, i, inicioImpeto[i]);
     st.impeto[i] = decairImpeto(st.impeto[i]);
-    if (b === GDD.blocoIntervalo) for (const e of st.t[i].escalados) e.energia = Math.min(100, e.energia + PROVISORIO.recuperacaoIntervalo);
+    if (b === GDD.blocoIntervalo) for (const e of st.t[i].escalados) e.energia = Math.min(100, e.energia + st.t[i].apoio.recuperacaoIntervalo);
   }
 }
 
@@ -793,6 +798,7 @@ function pausa(st: Estado, b: number): RelatorioPausa {
     const d = decisoes[i];
     if (d) {
       d.aplicar();
+      if (st.t[i].apoio.respaldo < RESPALDO.fraco) st.t[i].ajusteFraco = true;
       ajustes[i].push(d.texto);
       registrar(st, 'pausas', 'Ajuste do adversário', outro(i), { resultado: d.texto });
     }
@@ -896,6 +902,7 @@ export function simularPartida(ent: EntradaPartida): ResultadoPartida {
     }
   }
   registrar(st, 'abertura', 'Fim de jogo', 0, { resultado: 'fim' });
+  fecharNotas(t, st.placar);
 
   return {
     semente: ent.semente, times: t, placar: st.placar, estatisticas: st.est, fins: st.fins,

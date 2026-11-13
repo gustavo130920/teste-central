@@ -1,6 +1,6 @@
 // Virada do ano (etapa 3, 4ª fatia; GDD-gestao 11): encerramento, acesso e queda, vagas, reputação e torcida, ano novo.
 // Metas, finanças, pessoas, Europa e reposição ficam para a etapa 4 (Gestão).
-import type { Clube, Jogador, Tatica, Tecnico } from '../motor/dados.ts';
+import type { Clube, Jogador, Profissional, Tatica, Tecnico } from '../motor/dados.ts';
 import type { EntradaTime } from '../motor/tipos.ts';
 import { ANO1 } from './copas.ts';
 import type { Memoria } from './memoria.ts';
@@ -36,6 +36,8 @@ export interface Mundo {
   tecnicos: Tecnico[];
   elencos: Record<string, Jogador[]>;
   tatica: Tatica;
+  /** Comissões por clube (etapa 4); sem elas, comissão neutra. */
+  comissoes?: Record<string, Profissional[]>;
   clubesPorLiga: Record<string, string[]>;
   europeus: string[];
   libertadores: string[][];
@@ -46,12 +48,12 @@ export interface Mundo {
   historico: Resumo[];
 }
 
-export function criarMundo(base: { clubes: Clube[]; tecnicos: Tecnico[]; elencos: Record<string, Jogador[]>; tatica: Tatica }): Mundo {
+export function criarMundo(base: { clubes: Clube[]; tecnicos: Tecnico[]; elencos: Record<string, Jogador[]>; tatica: Tatica; comissoes?: Record<string, Profissional[]> }): Mundo {
   const clubes = base.clubes.map((c) => ({ ...c }));
   const clubesPorLiga = Object.fromEntries(LIGAS.map((l) => [l, clubes.filter((c) => c.liga === l && !c.reserva).map((c) => c.id)]));
   const lib = ANO1.libertadores;
   return {
-    ano: 1, clubes, tecnicos: base.tecnicos, elencos: base.elencos, tatica: base.tatica, clubesPorLiga,
+    ano: 1, clubes, tecnicos: base.tecnicos, elencos: base.elencos, tatica: base.tatica, comissoes: base.comissoes, clubesPorLiga,
     europeus: clubes.filter((c) => c.liga === 'europa').map((c) => c.id),
     libertadores: [lib.brasil, lib.argentina, lib.colombia, lib.chile], folgasCopaDoBrasil: [...ANO1.folgasCopaDoBrasil],
     memoria: null, torcidaPontos: new Map(), anosSemLibertadores: new Map(), historico: [],
@@ -70,7 +72,7 @@ function entradas(m: Mundo): Record<string, EntradaTime> {
 export function jogarAno(m: Mundo, semente: number, adaptacao = true): Temporada {
   const t = simularTemporada({
     semente: semente * 1000 + m.ano, clubesPorLiga: m.clubesPorLiga, europeus: m.europeus, entradas: entradas(m), elencos: m.elencos, tatica: m.tatica,
-    libertadores: m.libertadores, folgasCopaDoBrasil: m.folgasCopaDoBrasil, memoria: m.memoria ?? undefined, adaptacao,
+    libertadores: m.libertadores, folgasCopaDoBrasil: m.folgasCopaDoBrasil, memoria: m.memoria ?? undefined, adaptacao, comissoes: m.comissoes,
   });
   m.memoria = t.memoria;
   return t;
@@ -174,4 +176,8 @@ export function novoAnoMemoria(mem: Memoria): void {
     if (s.ultimaLesao?.recaidaAte != null) s.ultimaLesao.recaidaAte -= d;
     if (s.voltaDia === null) s.condicao = ENTRE_JOGOS.preTemporada;
   }
+  for (const s of mem.jogadores.values()) s.titularidades = 0;
+  for (const g of mem.gestao.values()) { g.jogos = 0; g.titulo = false; }
+  // GDD-gestao 8: a química com o técnico sobe 1 por ano de trabalho junto.
+  for (const g of mem.gestao.values()) for (const p of g.comissao.profissionais) if (p.quimica !== null) p.quimica = Math.min(20, p.quimica + 1);
 }

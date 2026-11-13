@@ -16,7 +16,7 @@ export function chanceLesao(propensao: number, energia: number, preparador: numb
 }
 
 /** Falta dura sofrida: a mesma chance, mais 1 ponto percentual (leitura de "1% extra", PROVISORIO). */
-export const chanceLesaoFaltaDura = (propensao: number, energia: number): number => chanceLesao(propensao, energia) + GDD.lesao.faltaDuraExtra;
+export const chanceLesaoFaltaDura = (propensao: number, energia: number, preparador?: number): number => chanceLesao(propensao, energia, preparador) + GDD.lesao.faltaDuraExtra;
 
 const GRAVIDADES: Gravidade[] = ['leve', 'media', 'grave'];
 

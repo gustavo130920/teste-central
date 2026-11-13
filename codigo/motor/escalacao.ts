@@ -1,6 +1,7 @@
 // Monta o time em campo: melhores 11 na formação com a bola e a mesma turma na formação sem a bola.
 import type { Formacao, Jogador, PadraoTime, PecaFormacao, Posicao, Tatica } from './dados.ts';
-import { GDD, PROVISORIO } from './parametros.ts';
+import { APOIO_NEUTRO, GDD, PROVISORIO, RESPALDO } from './parametros.ts';
+import { NOTA } from './notas.ts';
 import { calcularRetorno, eficaciaFinal, escolherInstrucao, exigenciaCumprida, faixaPeloBloco, montarPesos, notasEfetivas } from './plano.ts';
 import type { Rng } from './rng.ts';
 import { calcularEfeitos } from './sinergias.ts';
@@ -97,28 +98,29 @@ export function montarTime(indice: 0 | 1, ent: EntradaTime, tatica: Tatica, rng:
   const ligacao = ligarSemBola(com.map((p) => ({ pos: p.posicao, zona: zonaDeCodigo(p.zona) })), sem);
   const escalados: Escalado[] = onze.map((j, i) => {
     if (!j) throw new Error(`${ent.clube.id}: faltou jogador para ${com[i].posicao}`);
-    return novoEscalado(j, indice, com[i].posicao, zonaDeCodigo(com[i].zona), zonaDeCodigo(sem[ligacao[i]].zona), rng, classico, ent.condicao);
+    return novoEscalado(j, indice, com[i].posicao, zonaDeCodigo(com[i].zona), zonaDeCodigo(sem[ligacao[i]].zona), rng, classico, ent.condicao, ent.moral);
   });
   const goleiro = escalados.find((e) => e.j.posicao === 'GOL');
   if (!goleiro) throw new Error(`${ent.clube.id}: sem goleiro`);
   const t: TimeEmCampo = {
     indice, clube: ent.clube, tecnico: ent.tecnico, estilo, padrao, notas: notasEfetivas(estilo, padrao), escalados, goleiro,
-    participantes: [...escalados], banco: escolherBanco(ent.elenco, onze, com), trocas: 0, tecnicoExpulso: false, emCasa: indice === 0, condicao: ent.condicao,
+    participantes: [...escalados], banco: escolherBanco(ent.elenco, onze, com), trocas: 0, tecnicoExpulso: false, emCasa: indice === 0, condicao: ent.condicao, moral: ent.moral, ajusteFraco: false,
     presencaCom: [], presencaContra: [], efeitos: calcularEfeitos([], [], padrao),
     confronto: { pressaoSaida: 0, velocidadeCostas: 0, criacaoBloco: 0, viabilidade: 0 },
+    apoio: { ...APOIO_NEUTRO, ...ent.apoio },
   };
   for (const e of escalados) escolherAsDuas(e, t, tatica);
   prepararTime(t, tatica);
   return t;
 }
 
-function novoEscalado(j: Jogador, time: 0 | 1, vaga: Posicao, zonaCom: number, zonaSemBase: number, rng: Rng, classico: boolean, condicao?: Record<string, number>): Escalado {
+function novoEscalado(j: Jogador, time: 0 | 1, vaga: Posicao, zonaCom: number, zonaSemBase: number, rng: Rng, classico: boolean, condicao?: Record<string, number>, moral?: Record<string, number>): Escalado {
   const amplitude = (21 - (j.atributos.Cons ?? 10)) / 5; // Forma do dia, GDD 3
   return {
     j, time, vaga, zonaCom, zonaSem: zonaSemBase, zonaSemBase, retorno: 0,
     forma: (rng.n() * 2 - 1) * amplitude,
     jogosGrandes: classico ? ((j.atributos.JG ?? 10) - 10) / 5 + (j.perfilJovem === 'Inseguro' ? GDD.inseguroClassico : 0) : 0,
-    energia: condicao?.[j.id] ?? PROVISORIO.energiaInicial, moral: PROVISORIO.moralInicial, modBloco: 0,
+    energia: condicao?.[j.id] ?? PROVISORIO.energiaInicial, moral: moral?.[j.id] ?? PROVISORIO.moralInicial, modBloco: 0, nota: NOTA.inicial,
     instrCom: null, instrSem: null, efCom: 0, efSem: 0, pesoCom: [], pesoSem: [], pesoContra: [],
     amarelos: 0, expulso: null, saiuSemTroca: false, lesao: null,
   };
@@ -143,8 +145,9 @@ export function prepararTime(t: TimeEmCampo, tatica: Tatica): void {
     // Ajuste de linha na pausa pode invalidar uma instrução que exige Linha Alta.
     if (e.instrCom && !exigenciaCumprida(e.instrCom, t.padrao, zagueiros)) e.instrCom = escolherInstrucao(e, 'Com', tatica.instrucoes, t.estilo.nome, t.padrao, zagueiros);
     if (e.instrSem && !exigenciaCumprida(e.instrSem, t.padrao, zagueiros)) e.instrSem = escolherInstrucao(e, 'Sem', tatica.instrucoes, t.estilo.nome, t.padrao, zagueiros);
-    e.efCom = e.instrCom ? eficaciaFinal(e, e.instrCom, t.estilo.nome) : 0;
-    e.efSem = e.instrSem ? eficaciaFinal(e, e.instrSem, t.estilo.nome) : 0;
+    const fator = t.apoio.entrosamento * (t.ajusteFraco ? RESPALDO.fator : 1);
+    e.efCom = e.instrCom ? eficaciaFinal(e, e.instrCom, t.estilo.nome, fator) : 0;
+    e.efSem = e.instrSem ? eficaciaFinal(e, e.instrSem, t.estilo.nome, fator) : 0;
     montarPesos(e, goleiro);
   }
   const somaPesos = (peso: (e: Escalado) => number[]): number[] => {
@@ -166,7 +169,7 @@ export function substituir(t: TimeEmCampo, sai: Escalado, tatica: Tatica, rng: R
     if (n !== null && n > nota) { melhor = j; nota = n; }
   }
   if (!melhor) return null;
-  const entra = novoEscalado(melhor, t.indice, sai.vaga, sai.zonaCom, sai.zonaSemBase, rng, classico, t.condicao);
+  const entra = novoEscalado(melhor, t.indice, sai.vaga, sai.zonaCom, sai.zonaSemBase, rng, classico, t.condicao, t.moral);
   escolherAsDuas(entra, t, tatica);
   t.escalados[t.escalados.indexOf(sai)] = entra;
   t.participantes.push(entra);

@@ -9,7 +9,7 @@ import type { Instrucao, PadraoTime } from '../motor/dados.ts';
 import { chanceDisputa, chanceGol, mediaPonderada, penaFirula, pesoDefeito } from '../motor/disputa.ts';
 import { montarTime, retirarLesionado } from '../motor/escalacao.ts';
 import { chanceLesao, chanceLesaoFaltaDura, semanasFora, sortearGravidade } from '../motor/lesoes.ts';
-import { GDD } from '../motor/parametros.ts';
+import { APOIO_NEUTRO, GDD } from '../motor/parametros.ts';
 import { calcularAcrescimos, simularPartida } from '../motor/partida.ts';
 import { criarRng } from '../motor/rng.ts';
 import { calcularRetorno, eficaciaBase, faixaPeloBloco, notasEfetivas } from '../motor/plano.ts';
@@ -81,7 +81,7 @@ const peca = (posicao: string, nome: string): Instrucao => {
 const falsoEscalado = (zona: string, com: Instrucao | null, efCom: number, sem: Instrucao | null = null, efSem = 0): Escalado => ({
   j: { nome: zona, tracos: [], qualidades: [], defeitos: [], atributos: {} } as unknown as Escalado['j'], time: 0, vaga: 'MC', zonaCom: zonaDeCodigo(zona), zonaSem: zonaDeCodigo(zona), zonaSemBase: zonaDeCodigo(zona),
   retorno: 0, forma: 0, jogosGrandes: 0, energia: 100, moral: 60, modBloco: 0, instrCom: com, instrSem: sem, efCom, efSem, pesoCom: [], pesoSem: [], pesoContra: [],
-  amarelos: 0, expulso: null, saiuSemTroca: false, lesao: null,
+  amarelos: 0, expulso: null, saiuSemTroca: false, lesao: null, nota: 6,
 });
 const padraoNormal = { linha: 'Média', pressao: 'Média', largura: 'Normal', ritmo: 'Normal', saida: 'Mista' } as PadraoTime;
 
@@ -167,7 +167,7 @@ test('GDD 6: exemplos de gasto de energia', () => {
   const custoG = { custo: { energia: 'G', risco: '0', posse: '0' } } as Instrucao;
   const volante = falsoEscalado('CE3', custoG, 1);
   volante.j.atributos = { Res: 12 };
-  const time = (fisico: number) => ({ notas: { Fisico: fisico }, efeitos: { coberturas: new Map() } }) as unknown as TimeEmCampo;
+  const time = (fisico: number) => ({ notas: { Fisico: fisico }, efeitos: { coberturas: new Map() }, apoio: APOIO_NEUTRO }) as unknown as TimeEmCampo;
   // O exemplo do GDD soma +1 de Empenho Alto, que a IA ainda não usa: 11,18 − 1.
   assert.ok(Math.abs(gastoBloco(volante, time(19)) - 10.18) < 1e-9);
   const normal = falsoEscalado('CE3', null, 0);
@@ -281,10 +281,10 @@ test('GDD 8: batedor é o maior BP e o estilo Bola Parada soma +2', () => {
   const b = falsoEscalado('CE3', null, 0);
   a.j.atributos = { BP: 9 };
   b.j.atributos = { BP: 15 };
-  const t = { escalados: [a, b], estilo: { nome: 'Bola Parada' } } as unknown as TimeEmCampo;
+  const t = { escalados: [a, b], estilo: { nome: 'Bola Parada' }, apoio: APOIO_NEUTRO } as unknown as TimeEmCampo;
   assert.equal(escolherBatedor(t), b);
   assert.equal(bonusEnsaiada(t), 2);
-  assert.equal(bonusEnsaiada({ estilo: { nome: 'Ginga' } } as unknown as TimeEmCampo), 0);
+  assert.equal(bonusEnsaiada({ estilo: { nome: 'Ginga' }, apoio: APOIO_NEUTRO } as unknown as TimeEmCampo), 0);
 });
 
 test('expulsão tira o jogador de campo, sem quebrar o jogo', () => {

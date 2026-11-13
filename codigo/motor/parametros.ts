@@ -243,3 +243,18 @@ export const PROVISORIO = {
   // 5ª fatia: lesões
   preparadorLesao: 1, // Prevenção de lesões do preparador (GDD: × 1,2 a × 0,7); neutro até a Gestão
 } as const;
+
+/** Comissão e treino neutros: o motor sem a Gestão (etapas 2 e 3). */
+export const APOIO_NEUTRO = {
+  entrosamento: PROVISORIO.entrosamentoInicial,
+  recuperacaoIntervalo: PROVISORIO.recuperacaoIntervalo,
+  prevencao: PROVISORIO.preparadorLesao,
+  ensaiada: PROVISORIO.ensaiadaAnalista,
+  estudoBatedores: PROVISORIO.estudoBatedores,
+  menosGasto: 0,
+  quedaMoral: 1,
+  respaldo: 100,
+};
+
+/** GDD 7: Respaldo do elenco nos ajustes da pausa. Decisão do Gustavo (13/11/2026): eficácia das instruções do time × 0,9 no bloco seguinte. */
+export const RESPALDO = { fraco: 40, recusa: 15, fator: 0.9 } as const;

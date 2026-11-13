@@ -23,7 +23,7 @@ const faixa = (liga: string, pos: number, total: number): string => {
 };
 
 const inicio = Date.now();
-const t = simularTemporada({ semente, clubesPorLiga, europeus, entradas, elencos: base.elencos, tatica: base.tatica });
+const t = simularTemporada({ semente, clubesPorLiga, europeus, entradas, elencos: base.elencos, tatica: base.tatica, comissoes: base.comissoes });
 const segundos = (Date.now() - inicio) / 1000;
 
 if (mostrarRodadas) {

@@ -57,8 +57,8 @@ export function coerencia(ins: Instrucao, estilo: string): number {
 }
 
 /** GDD 4: eficácia × coerência × entrosamento. */
-export const eficaciaFinal = (e: Escalado, ins: Instrucao, estilo: string): number =>
-  eficaciaBase(e, ins) * coerencia(ins, estilo) * PROVISORIO.entrosamentoInicial;
+export const eficaciaFinal = (e: Escalado, ins: Instrucao, estilo: string, entrosamento: number = PROVISORIO.entrosamentoInicial): number =>
+  eficaciaBase(e, ins) * coerencia(ins, estilo) * entrosamento;
 
 export function exigenciaCumprida(ins: Instrucao, padrao: PadraoTime, zagueiros: number): boolean {
   if (ins.exige === 'Linha Alta') return padrao.linha === 'Alta';

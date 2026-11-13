@@ -31,6 +31,8 @@ export interface Escalado {
   saiuSemTroca: boolean;
   /** A pior lesão sofrida neste jogo (GDD 8). */
   lesao: Gravidade | null;
+  /** Nota do jogo, sem limite enquanto corre (GDD 10; ver notas.ts). */
+  nota: number;
 }
 
 export type Gravidade = 'leve' | 'media' | 'grave';
@@ -92,6 +94,11 @@ export interface TimeEmCampo {
   goleiro: Escalado;
   efeitos: EfeitosTime;
   confronto: ConfrontoTime;
+  apoio: ApoioComissao;
+  /** Moral inicial de quem vier do banco. */
+  moral?: Record<string, number>;
+  /** Respaldo de 15 a 39: o bloco depois de uma pausa com ajuste rende × 0,9 (GDD 7). */
+  ajusteFraco: boolean;
 }
 
 /** `padrao` troca instruções do time em relação ao estilo do técnico (GDD 5). */
@@ -105,6 +112,30 @@ export interface EntradaTime {
   condicao?: Record<string, number>;
   /** Titulares que o auxiliar prefere poupar: vão ao banco se houver reserva da posição. */
   poupados?: string[];
+  /** Efeito da comissão e do treino neste jogo (GDD-gestao 2 e 8); sem ele, valores neutros. */
+  apoio?: Partial<ApoioComissao>;
+  /** Moral inicial por jogador (GDD-gestao 3); quem não estiver aqui começa com 60. */
+  moral?: Record<string, number>;
+}
+
+/** O que a comissão e o treino do ciclo entregam ao motor (GDD-gestao 2 e 8). */
+export interface ApoioComissao {
+  /** 0,7 a 1,0 na eficácia das instruções. */
+  entrosamento: number;
+  /** Energia recuperada no intervalo (6 a 12, preparador). */
+  recuperacaoIntervalo: number;
+  /** Multiplicador da chance de lesão (× 1,2 a × 0,7, preparador). */
+  prevencao: number;
+  /** Bônus de quem cobra bola parada (analista 0 a +3, mais o foco Bola parada). */
+  ensaiada: number;
+  /** Pontos que o goleiro ganha contra o batedor de pênalti (treinador de goleiros, 0 a 3). */
+  estudoBatedores: number;
+  /** Gasto de energia a menos por bloco (foco Físico, 0,3 a 0,7). */
+  menosGasto: number;
+  /** Quedas de moral no jogo × isto (psicólogo, GDD-gestao 3). */
+  quedaMoral: number;
+  /** Respaldo do elenco, 0 a 100 (GDD 7). */
+  respaldo: number;
 }
 export interface EntradaPartida {
   mandante: EntradaTime;

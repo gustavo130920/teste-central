@@ -160,3 +160,24 @@ export interface FraseNarracao {
   contexto: string[];
   texto: string;
 }
+
+/** Comissão (bloco 5): os 12 cargos de cada clube. */
+export const CARGOS = ['Auxiliar', 'Preparador', 'Goleiros', 'Analista', 'Olheiro atual', 'Olheiro potencial', 'Olheiro jovens', 'Coord. base', 'Médico', 'Psicólogo', 'Diretor', 'Comercial'] as const;
+export type Cargo = typeof CARGOS[number];
+
+export interface Profissional {
+  cargo: Cargo;
+  nome: string;
+  idade: number;
+  nacionalidade: string;
+  /** Siglas do arquivo (Lei, TTe, Rec, Prev, Trat...), de 1 a 20. */
+  atributos: Record<string, number>;
+  reputacao: number;
+  ambicao: number;
+  lealdade: number;
+  /** Química com o técnico; null para os livres. */
+  quimica: number | null;
+  homemDeConfianca: boolean;
+  salario: number;
+  contrato: number | null;
+}

@@ -21,7 +21,7 @@ export function escolherBatedor(t: TimeEmCampo): Escalado {
 
 /** Bônus de quem cobra: analista (entra com a Gestão) e estilo Bola Parada, em BP e Cab. */
 export const bonusEnsaiada = (t: TimeEmCampo): number =>
-  PROVISORIO.ensaiadaAnalista + (t.estilo.nome === 'Bola Parada' ? GDD.bolaParada.estilo : 0);
+  t.apoio.ensaiada + (t.estilo.nome === 'Bola Parada' ? GDD.bolaParada.estilo : 0);
 
 const valorAereo = (e: Escalado): number => lerAtributo(e, 'Cab') * 0.6 + lerAtributo(e, 'Imp') * 0.4;
 

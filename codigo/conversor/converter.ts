@@ -2,9 +2,9 @@
 import { mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { Clube, FraseNarracao, Jogador, Tatica, Tecnico } from '../motor/dados.ts';
+import type { Clube, FraseNarracao, Jogador, Profissional, Tatica, Tecnico } from '../motor/dados.ts';
 import {
-  Relatorio, lerClubes, lerCombinacoes, lerElenco, lerEstilos, lerFormacoes, lerInstrucoes, lerNarracao, lerTecnicos,
+  Relatorio, lerClubes, lerComissoes, lerCombinacoes, lerElenco, lerEstilos, lerFormacoes, lerInstrucoes, lerNarracao, lerTecnicos,
 } from './parsers.ts';
 
 const raiz = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -50,6 +50,17 @@ for (const c of clubes) {
   }
 }
 
+// Comissões: o técnico do cabeçalho liga o bloco ao clube. A Europa não tem comissão nos dados.
+const comissoes: Record<string, Profissional[]> = {};
+for (const liga of LIGAS.filter((l) => l !== 'europa')) {
+  for (const c of lerComissoes(ler('comissao', `${liga}.md`), rel)) {
+    const t = tecnicos.find((x) => x.nome === c.tecnico);
+    if (!t?.clubeId) { avisos.push(`comissão sem clube: técnico ${c.tecnico}`); continue; }
+    comissoes[t.clubeId] = c.profissionais;
+  }
+}
+const comissaoLivre = lerComissoes(ler('comissao', 'livres.md'), rel).flatMap((c) => c.profissionais);
+
 const tatica: Tatica = {
   estilos: lerEstilos(ler('tatica', 'estilos.md'), rel),
   formacoes: lerFormacoes(ler('tatica', 'formacoes.md'), rel),
@@ -81,6 +92,7 @@ gravar('tecnicos.json', tecnicos);
 gravar('elencos.json', elencos);
 gravar('livres.json', livres);
 gravar('tatica.json', tatica);
+gravar('comissao.json', { clubes: comissoes, livres: comissaoLivre });
 gravar('narracao.json', narracao);
 const contagem = {
   clubesCompetindo: competindo.length,
@@ -88,6 +100,9 @@ const contagem = {
   elencos: Object.keys(elencos).length,
   jogadores: Object.values(elencos).reduce((s, e) => s + e.length, 0),
   livres: livres.length,
+  comissoes: Object.keys(comissoes).length,
+  profissionais: Object.values(comissoes).reduce((s, c) => s + c.length, 0),
+  profissionaisLivres: comissaoLivre.length,
   tecnicos: tecnicos.length,
   tecnicosComClube: tecnicos.filter((t) => t.clubeId).length,
   estilos: tatica.estilos.length,

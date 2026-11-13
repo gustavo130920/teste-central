@@ -1,6 +1,6 @@
 // Temporada (etapa 3): 5 ligas de pontos corridos e as copas. Cada jogo roda com o motor completo e semente própria.
 // Memória entre jogos (condição, lesões, suspensões, rodízio) em memoria.ts; copas em copas.ts.
-import type { Jogador, Tatica } from '../motor/dados.ts';
+import type { Jogador, Profissional, Tatica } from '../motor/dados.ts';
 import { simularPartida } from '../motor/partida.ts';
 import { disputarPenaltis } from '../motor/penaltis.ts';
 import { criarRng, semearDeTexto } from '../motor/rng.ts';
@@ -16,6 +16,9 @@ import type { Desfalques, Memoria } from './memoria.ts';
 import { criarMemoria, prepararJogo, registrarJogo } from './memoria.ts';
 
 export const LIGAS = ['serie-a', 'serie-b', 'argentina', 'colombia', 'chile'] as const;
+
+/** Decisão do Gustavo (13/11/2026): "decisão" na moral = mata-mata das quartas em diante e o Mundial. */
+const DECISAO = ['Quartas', 'Semifinal', 'Final'];
 
 export interface JogoDisputado extends Jogo, ResultadoJogo {
   semente: number;
@@ -56,13 +59,16 @@ export interface EntradaTemporada {
   memoria?: Memoria;
   /** Adaptação do técnico da IA entre jogos (padrão: ligada). */
   adaptacao?: boolean;
+  /** Comissões por clube (etapa 4). Sem elas, comissão neutra e sem treino, como na etapa 3. */
+  comissoes?: Record<string, Profissional[]>;
 }
 
 export function simularTemporada(e: EntradaTemporada): Temporada {
   const ligas = Object.keys(e.clubesPorLiga);
   const rngDe = (s: string) => criarRng(semearDeTexto(`${e.semente}-${s}`));
   const dasLigas = ligas.flatMap((liga) => jogosDaLiga(liga, e.clubesPorLiga[liga], rngDe(`tabela-${liga}`)));
-  const memoria = e.memoria ?? criarMemoria(e.elencos, [...ligas.flatMap((l) => e.clubesPorLiga[l]), ...(e.europeus ?? [])]);
+  const memoria = e.memoria ?? criarMemoria(e.elencos, [...ligas.flatMap((l) => e.clubesPorLiga[l]), ...(e.europeus ?? [])],
+    e.comissoes ? { comissoes: e.comissoes, entradas: e.entradas, tatica: e.tatica } : undefined);
 
   const copas: Copa[] = [];
   if (e.europeus) {
@@ -98,7 +104,7 @@ export function simularTemporada(e: EntradaTemporada): Temporada {
         memoria.contagem.adaptacoes += 1;
         return aj.padrao;
       });
-      const entrada = (k: 0 | 1): EntradaTime => ({ ...e.entradas[lados[k]], elenco: prep[k].elenco, condicao: prep[k].condicao, poupados: prep[k].poupados, padrao: padrao[k] ?? e.entradas[lados[k]].padrao });
+      const entrada = (k: 0 | 1): EntradaTime => ({ ...e.entradas[lados[k]], elenco: prep[k].elenco, condicao: prep[k].condicao, poupados: prep[k].poupados, padrao: padrao[k] ?? e.entradas[lados[k]].padrao, apoio: prep[k].apoio, moral: prep[k].moral });
       const r = simularPartida({ mandante: entrada(0), visitante: entrada(1), tatica: e.tatica, semente, neutro: jc?.neutro });
       const [x, y] = r.estatisticas;
       const titulares = (k: 0 | 1): number => {
@@ -116,8 +122,15 @@ export function simularTemporada(e: EntradaTemporada): Temporada {
         const chave = `${lados[k]}>${lados[1 - k]}`;
         memoria.leituras.set(chave, lerJogo(r, k, memoria.leituras.get(chave)));
       }
-      for (const k of [0, 1] as const) registrarJogo(memoria, lados[k], k, r, j.dia, j.competicao, prep[k].desfalques.suspensos, rngMem);
-      if (copa && jc) copa.registrar(jc, res, penaltis);
+      const decisao = !!jc && DECISAO.includes(jc.fase);
+      for (const k of [0, 1] as const) registrarJogo(memoria, lados[k], k, r, j.dia, j.competicao, prep[k].desfalques.suspensos, rngMem, decisao);
+      if (copa && jc) {
+        copa.registrar(jc, res, penaltis);
+        // Título na temporada: +10 no alvo do Respaldo (GDD-gestao 3). Ligas terminam no fim do ano, sem ciclo depois.
+        const campeao = copa.campeao();
+        const gc = campeao ? memoria.gestao.get(campeao) : undefined;
+        if (gc) gc.titulo = true;
+      }
       jogos.push(d);
       e.aoJogar?.(d);
     }

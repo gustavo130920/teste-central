@@ -1,8 +1,9 @@
 // Interpreta os .md de dados/. Toda linha que não se encaixa vai para o relatório.
 import type {
   Atributo, Clube, Combinacao, Estilo, Etiqueta, FraseNarracao, Formacao, Instrucao, Jogador,
-  NotaEstilo, PadraoTime, Posicao, PosicaoSecundaria, Rival, Tecnico,
+  NotaEstilo, PadraoTime, Posicao, PosicaoSecundaria, Profissional, Rival, Tecnico,
 } from '../motor/dados.ts';
+import { CARGOS } from '../motor/dados.ts';
 
 export interface Problema { arquivo: string; linha: number; motivo: string; trecho: string }
 export class Relatorio {
@@ -382,6 +383,39 @@ export function lerNarracao(texto: string, tema: string, rel: Relatorio): FraseN
   linhasTabela(texto, rel, 5, (c, n, l) => {
     if (c[2] !== 'N' && c[2] !== 'C') { rel.add(n, 'voz', l); return; }
     res.push({ id: c[0], tema, lance: c[1], voz: c[2], contexto: c[3] === 'Sempre' ? [] : c[3].split(',').map((x) => x.trim()), texto: c[4] });
+  });
+  return res;
+}
+
+export interface ComissaoLida { tecnico: string | null; profissionais: Profissional[] }
+
+/** Comissões (`dados/comissao/`): um bloco `### Clube (técnico: Nome)` por clube; nos livres, uma tabela só. */
+export function lerComissoes(texto: string, rel: Relatorio): ComissaoLida[] {
+  const res: ComissaoLida[] = [];
+  let atual: ComissaoLida | null = null;
+  texto.split(/\r?\n/).forEach((l, i) => {
+    const n = i + 1;
+    const cab = l.match(/^### .+\(técnico: (.+)\)\s*$/);
+    if (cab) { atual = { tecnico: cab[1].trim(), profissionais: [] }; res.push(atual); return; }
+    if (!l.startsWith('|') || ehSeparador(l)) return;
+    const c = celulas(l);
+    if (c[0] === 'Cargo') return;
+    if (c.length !== 11) { rel.add(n, `esperava 11 colunas, veio ${c.length}`, l); return; }
+    if (!(CARGOS as readonly string[]).includes(c[0])) { rel.add(n, `cargo desconhecido: ${c[0]}`, l); return; }
+    const atributos: Record<string, number> = {};
+    for (const p of c[4].split('·')) {
+      const m = p.trim().match(/^(\S+) (\d+)$/);
+      if (!m) { rel.add(n, 'atributo da comissão', p); return; }
+      atributos[m[1]] = Number(m[2]);
+    }
+    const quim = c[8].replace('★', '');
+    if (!atual) { atual = { tecnico: null, profissionais: [] }; res.push(atual); }
+    atual.profissionais.push({
+      cargo: c[0] as Profissional['cargo'], nome: c[1], idade: Number(c[2]), nacionalidade: c[3], atributos,
+      reputacao: Number(c[5]), ambicao: Number(c[6]), lealdade: Number(c[7]),
+      quimica: /^\d+$/.test(quim) ? Number(quim) : null, homemDeConfianca: c[8].includes('★'),
+      salario: Number(c[9]), contrato: /^\d{4}$/.test(c[10]) ? Number(c[10]) : null,
+    });
   });
   return res;
 }

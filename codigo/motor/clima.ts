@@ -17,7 +17,7 @@ export function gastoBloco(e: Escalado, t: TimeEmCampo): number {
   const cobrir = (t.efeitos.coberturas.get(e) ?? 0) * g.cobrir;
   const longe = Math.max(0, distancia(e.zonaCom, e.zonaSem) - 2) * g.distancia;
   const preguica = e.j.defeitos.includes('Preguiçoso sem a bola') ? g.preguicoso : 0;
-  return Math.max(g.minimo, fisico + custo + cobrir + longe - resistencia - preguica);
+  return Math.max(g.minimo, fisico + custo + cobrir + longe - resistencia - preguica - t.apoio.menosGasto);
 }
 
 /** -1 para cada 15 pontos abaixo de 70. */
@@ -68,6 +68,7 @@ export function decairImpeto(v: number): number {
 
 /** Quedas valem × 0,75 com Líder de vestiário em campo. Gelo não perde moral com vaia. */
 export function mudarMoral(t: TimeEmCampo, alvos: Escalado[], delta: number): void {
-  const d = delta < 0 && noCampo(t, 'Líder de vestiário') ? delta * GDD.liderQuedaMoral : delta;
+  const lider = delta < 0 && noCampo(t, 'Líder de vestiário') ? GDD.liderQuedaMoral : 1;
+  const d = delta < 0 ? delta * lider * t.apoio.quedaMoral : delta;
   for (const e of alvos) e.moral = limitar(e.moral + d, 0, 100);
 }

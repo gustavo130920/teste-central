@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { Clube, FraseNarracao, Jogador, Tatica, Tecnico } from '../motor/dados.ts';
+import type { Clube, FraseNarracao, Jogador, Profissional, Tatica, Tecnico } from '../motor/dados.ts';
 import type { EntradaTime } from '../motor/tipos.ts';
 
 const GERADO = join(dirname(fileURLToPath(import.meta.url)), '..', 'gerado');
@@ -13,6 +13,8 @@ export interface Base {
   elencos: Record<string, Jogador[]>;
   tatica: Tatica;
   frases: FraseNarracao[];
+  /** Comissões por clube (a Europa não tem). */
+  comissoes: Record<string, Profissional[]>;
 }
 
 export function carregarBase(): Base {
@@ -22,6 +24,7 @@ export function carregarBase(): Base {
     elencos: ler<Record<string, Jogador[]>>('elencos.json'),
     tatica: ler<Tatica>('tatica.json'),
     frases: ler<FraseNarracao[]>('narracao.json'),
+    comissoes: ler<{ clubes: Record<string, Profissional[]> }>('comissao.json').clubes,
   };
 }
 
