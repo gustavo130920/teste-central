@@ -1,0 +1,21 @@
+{
+  "name": "motor-futebol-prototipo",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dados": "node conversor/converter.ts",
+    "partida": "node terminal/jogar.ts",
+    "medir": "node terminal/medir.ts",
+    "simular": "node terminal/cenarios.ts",
+    "temporada": "node terminal/temporada.ts",
+    "carreira": "node terminal/carreira.ts",
+    "tipos": "tsc --noEmit",
+    "pretest": "node conversor/converter.ts",
+    "test": "node --test testes/*.test.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^5.9.0"
+  }
+}

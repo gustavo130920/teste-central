@@ -1,0 +1,419 @@
+# Jogo de Gestão de Futebol — Planejamento
+
+> Nome provisório: a definir (opções: Prancheta, Área Técnica, Xeque-Mate FC, Beira do Campo, Virada, Esquema Tático, Meia-Lua, Camisa 12)
+> Fase atual: **planejamento** (nada desenvolvido ainda)
+
+## Visão
+Jogo de futebol estratégico (navegador, mobile e desktop). O jogador é **técnico** (elenco, táticas) e **gestor** (negociações, finanças, comissão). Dois pilares:
+1. **Xadrez tático**: elenco forte dá vantagem, mas o plano tático certo torna a zebra possível.
+2. **Gestão profunda**: a comissão técnica importa tanto quanto os craques.
+
+Projeto pessoal, sem prazo, com possível monetização (compra única; nada de pagar para ganhar).
+
+## Decisões tomadas
+- **Liga fictícia** inspirada nos clubes reais: cidade, cores, mascote, torcida, rivalidade e história parecidas; **nome e escudo distintos** (sem trocadilhos nem cópias). Marcas e patrocinadores todos fictícios.
+- Cada clube corresponde a um clube real da temporada 2026.
+- **Estaduais fora por enquanto.**
+
+## Competições (formato atual)
+| Competição | Clubes | Formato | Classificação |
+|---|---|---|---|
+| Série A (Brasil) | 20 | Pontos corridos, 38 rodadas | 4 piores caem; 4 melhores vão à Libertadores |
+| Série B (Brasil) | 10 | Pontos corridos (18 rodadas) | 4 melhores sobem |
+| Liga Argentina | 10 | Pontos corridos (18 rodadas) | 4 melhores vão à Libertadores |
+| Liga Colombiana | 10 | Pontos corridos (18 rodadas) | 4 melhores vão à Libertadores |
+| Liga Chilena | 10 | Pontos corridos (18 rodadas) | 4 melhores vão à Libertadores |
+| Libertadores | 16 | 4 grupos de 4 (6 jogos); 2 por grupo avançam; mata-mata de ida e volta, final inclusive | Campeão vai ao Mundial e tem vaga garantida no ano seguinte |
+| Copa do Brasil | 30 | 1ª fase com 28 clubes (os campeões da Série A e da Copa do Brasil anteriores folgam; se forem o mesmo, folga o vice da Série A); depois 16 em mata-mata de ida e volta; mando do 2º jogo sorteado | Campeão vai à Libertadores |
+| Champions (Europa) | 16 | Só simulada (jogo único, sem partida jogável): mata-mata direto, oitavas → quartas → semi → final, sem folga; sempre os mesmos 16 clubes, chaveamento sorteado a cada ano | Campeão vai ao Mundial |
+| Mundial | 2 | Jogo único em campo neutro, no Japão | — |
+
+**Escopo da v1:** o jogador só comanda clubes brasileiros.
+
+**Vagas na Libertadores (4 por país, sempre):** prioridade 1) campeão da Libertadores, 2) campeão da Copa do Brasil (só Brasil), 3) classificação da liga. Se um campeão já estiver classificado pela liga, a vaga desce para o próximo colocado.
+
+Total: 76 clubes (30 brasileiros, 30 sul-americanos, 16 europeus).
+
+**Regras da Libertadores**
+- Sorteio com **um clube de cada país por grupo**.
+- No mata-mata, a **melhor campanha na fase de grupos joga o 2º jogo em casa**.
+- Se o campeão já estiver classificado pela liga, a vaga passa para o próximo colocado do país dele.
+- Desempate no mata-mata (padrão atual): saldo agregado, depois pênaltis, sem gol fora de casa.
+- **Atributos**: escala de 1 a 20, com cerca de 20 a 24 atributos por jogador.
+- **12 estilos de jogo** (ver abaixo). Nenhum leva o nome de técnico real.
+- **Origens do técnico do jogador** com bônus e ponto fraco.
+- **SAF**: entra no jogo (ver abaixo).
+- **Ingresso e sócio-torcedor**: controle manual ou delegado a um funcionário contratado.
+- **Mundo compartilhado**: técnicos, comissões e jogadores são **os mesmos para todos os jogadores** (banco de dados fixo e versionado), para a comunidade poder conversar ("contratei esse preparador, ele é muito bom").
+- **Modelo híbrido**: mundo inicial pronto no banco de dados + rotação por lógica do jogo + gerador em código para o longo prazo (base, aposentadorias). **Sem IA durante o jogo.**
+- **Economia de trabalho**: cria-se à mão quem tem personalidade (técnicos, craques, figuras marcantes) e as regras (arquétipos, nomes, faixas de atributos); um script gera o volume.
+
+## Base de dados de referência
+Blocos: 1) atributos ✅ · 2) posições e instruções ✅ · 3) matriz de sinergias ✅ · 4) traços ✅ · 5) cargos da comissão ✅ · 6) personalidade (técnicos, empresários, diretoria) ✅ · perfis de clube ✅ · imprensa ✅. **Base completa.**
+
+### Bloco 1 — Atributos (aprovado para a v1)
+Escala de 1 a 20. Cada atributo tem uma função no motor.
+- **Técnicos (9):** Passe, Domínio, Drible, Cruzamento, Finalização, Chute de Longe, Cabeceio, Desarme, Bola Parada
+- **Mentais (9):** Visão, Decisão, Posicionamento (defensivo), Movimentação (ofensiva), Concentração, Disciplina Tática (quanto cumpre as instruções, chave das sinergias), Compostura, Liderança, Combatividade
+- **Físicos (5):** Velocidade, Resistência, Força, Agilidade, Impulsão
+- **Goleiros:** trocam os 9 técnicos por Reflexos, Segurança nas Mãos, Jogo Aéreo, Saída do Gol, Jogo com os Pés, Comando de Área (20 no total)
+- **Ocultos:** Consistência, Jogos Grandes, Propensão a Lesão, Potencial
+- **Complementares:** pé fraco (1 a 5), altura, peso, posição principal e secundárias com familiaridade
+- **Nota geral:** calculada por posição (pesos por atributo) e **mostrada na tela**
+- **Neblina de informação:** só para jogadores de fora do clube (atributos e nota aparecem como estimativa; olheiros melhores dão mais precisão). O próprio elenco aparece com os valores reais visíveis; os ocultos continuam ocultos.
+
+### Bloco 2 — Posições e instruções (aprovado)
+**Três camadas:** 1) estilo do técnico (padrão) → 2) instruções do time (linha defensiva, altura da pressão, largura, ritmo, saída curta ou direta) → 3) instruções individuais. Todas ajustáveis nas pausas.
+
+**Formações**
+- Catálogo de cerca de 10 para a v1: 4-4-2, 4-3-3, 4-2-3-1, 4-1-4-1, 4-3-1-2, 3-5-2, 3-4-3, 3-4-2-1, 5-3-2, 5-4-1 (variação com 3 zagueiros e linha de 5).
+- **Duas formações por tática:** uma com a bola (atacando) e uma sem a bola (defendendo). Quanto mais longe o jogador fica entre as duas posições, mais lenta a transição e maior o gasto de energia.
+- **Edição livre** do posicionamento a partir do catálogo. Jogadores no mesmo espaço geram deficiências táticas (zonas sobrecarregadas e buracos), que o adversário pode explorar. A tela mostra o aviso visualmente.
+
+**Posições (8 tipos, com lados):** Goleiro, Zagueiro, Lateral, Volante, Meia Central, Meia Ofensivo, Ponta, Centroavante.
+
+**Instruções individuais:** até 2 por jogador (1 com a bola + 1 sem a bola).
+| Posição | Instruções |
+|---|---|
+| Goleiro | Goleiro-líbero (exige linha alta) · Saída curta · Ligação direta · Fica no gol |
+| Zagueiro | Construtor · Conduz · Antecipa · Cobertura |
+| Lateral | Apoia por fora · Lateral por dentro · Ala · Fica para defender |
+| Volante | Protege a zaga · Recua entre os zagueiros · Caçador · Chega na área |
+| Meia Central | Box-to-box · Carregador · Entre linhas · Segura o meio |
+| Meia Ofensivo | Armador clássico · Flutua · Elemento surpresa · Cai pelos lados · Pressiona a saída |
+| Ponta | Corta pra dentro · Abre o campo · Ataca a profundidade · Ponta-armador |
+| Centroavante | Falso 9 · Pivô · Ataca a profundidade · Homem de área · Primeiro marcador |
+
+**Empenho (por jogador, separado das instruções):** Empenho Ofensivo e Empenho Defensivo, cada um em 3 níveis (baixo, normal, alto). Ex.: ponta com empenho defensivo alto volta para marcar; lateral com empenho ofensivo alto ultrapassa. **Mais empenho = mais distância percorrida = cansaço mais rápido**, atenuado pela Resistência.
+
+**Eficácia da instrução** = Disciplina Tática + atributos-chave da instrução + traço compatível + familiaridade com a posição. Toda instrução tem um custo (energia, risco defensivo ou perda de posse).
+
+### Bloco 3 — Sinergias e conflitos (aprovado)
+**Campo:** 30 zonas = 5 corredores verticais (ponta esq., meia-esq., centro, meia-dir., ponta dir.) × 6 faixas horizontais.
+
+**Etiquetas das instruções:** Ocupa · Libera · Ataca o espaço · Atrai marcador · Abre buraco · Cobre. Ex.: Falso 9 = libera área central + atrai zagueiro; Ponta corta pra dentro = ataca meia-esq.→centro; Lateral apoia por fora = ataca o corredor + abre buraco atrás.
+
+**Regras automáticas (as sinergias surgem sozinhas):**
+- Libera + ataca o mesmo espaço → sinergia (bônus de chance criada na zona)
+- Atrai marcador perto de quem ataca o espaço → sinergia
+- Dois ocupam ou atacam a mesma zona → congestionamento
+- Abre buraco sem ninguém cobrindo → brecha (bônus para o contra-ataque adversário na zona)
+- Buraco coberto → risco anulado, com custo de energia para quem cobre
+- Efeitos pequenos (3% a 15%), escalados pela eficácia do bloco 2; somados, viram jogos.
+
+**Combinações famosas:** cerca de 15 a 20 escritas à mão, com nome e bônus extra (ex.: "Diagonal da Morte" = Falso 9 + Ponta corta pra dentro; "Saída de Três"; "Corredor Duplo"). **Ficam ocultas até serem descobertas** e entram num caderno tático (motor de conversa na comunidade).
+
+**Confronto entre estilos — por características, não por tabela.** Cada estilo tem 6 notas: altura do bloco, intensidade da pressão, posse, verticalidade, risco nas costas, exigência física. O jogo compara essas notas com **o elenco em campo** (ex.: Posse contra Pressão alta favorece quem tem zagueiros e goleiro bons com a bola). O resultado depende dos jogadores, não só do estilo.
+
+**Coerência com o estilo:** instruções que combinam com o estilo do técnico ganham bônus; as que vão contra ele perdem um pouco. Quebrar o padrão é permitido, com custo.
+
+**Entrosamento tático:** uma tática nova leva semanas de treino até render 100%. Ajustes nas pausas são permitidos, mas mudanças radicais rendem menos.
+
+### Bloco 4 — Traços, personalidade, torcida e ímpeto (aprovado)
+**Regra central:** traço = tendência (o que gosta de fazer); atributo = qualidade (se faz bem). Traço com atributo baixo pode prejudicar.
+
+**Por jogador:** 0 a 3 traços de jogo (até 4 para craques) + até 1 qualidade + até 1 defeito de personalidade. Traços de jogadores de fora só aparecem com os olheiros. Traços novos se aprendem em treino individual (auxiliar técnico); jovens aprendem mais rápido.
+
+**Traços de jogo (29)**
+- Ofensivos com bola: Corta pra dentro · Vai ao fundo · Chuta de fora · Encara o marcador · Passe em profundidade · Lançamento longo · Tabelinha · Frio no 1x1 · Cabeceador · Cava faltas
+- Ofensivos sem bola: Infiltrador · Recua para buscar · Pivô de costas · Oportunista
+- Defensivos: Marcador implacável · Interceptador · Desarme limpo · Xerife do jogo aéreo · Pressionador incansável · Leitor de cobertura
+- Goleiros: Pegador de pênalti · Paredão no 1x1 · Goleiro-líbero · Distribuidor
+- Bola parada: Cobrador de falta · Batedor de escanteio · Cobrador de pênalti
+- Especiais: Versátil · Adaptável
+
+**Qualidades:** Incendiário · Ídolo/Cria da casa (vender irrita muito a torcida) · Raçudo · Decisivo · Gelo (imune a provocação, acalma o time) · Carismático (valoriza imagem e patrocínio) · Exemplo profissional (jovens perto dele evoluem mais) · Líder de vestiário
+**Defeitos:** Fominha · Esquentado · Preguiçoso sem a bola · Firuleiro · Indisciplinado. Todos com efeito na torcida.
+
+**Perfis de jovem (base, até cerca de 21 anos)** — evoluem para uma qualidade ou um defeito adulto:
+| Perfil | Bem trabalhado | Mal trabalhado |
+|---|---|---|
+| Marrento (provoca sem necessidade) | Incendiário, Decisivo | Esquentado, Indisciplinado |
+| Pé no chão (sempre humilde) | Exemplo profissional, Líder, Ídolo | Sem traço marcante |
+| Deslumbrado (fama e dinheiro sobem à cabeça) | Carismático | Firuleiro, Preguiçoso; pede para ser vendido cedo |
+| Inseguro (talento que trava sob pressão) | Gelo, Decisivo | Some em jogo grande; pede empréstimo |
+O que decide: **psicólogo esportivo (maior influência nos jovens)**, mentor no elenco (Exemplo profissional, Líder), minutos jogados, ambiente (resultados, vaias), coordenador da base. Ídolo também exige tempo de clube e jogos marcantes.
+
+**Torcida e clima**
+- **Humor da torcida** (temporada): resultados, ídolos, contratações e vendas, preço do ingresso, traços → fator casa, pressão sobre técnico (demissão) e diretoria (eleição), bilheteria e sócio.
+- **Ímpeto** (dentro do jogo, por time): gols, faltas duras, provocações, defesas difíceis, pênalti perdido, traços → rendimento (3% a 8%). Em casa, a torcida amplifica.
+- **"Pôr fogo no jogo":** ordem dada ao Incendiário nas pausas; ele também tenta sozinho às vezes, conforme a personalidade. Sucesso: Liderança + Combatividade + Compostura + situação (em casa, perdendo, time apático). Riscos: cartão, motivar o adversário, inflamar a torcida rival fora de casa.
+
+### Bloco 5 — Comissão (aprovado)
+**Comum a todos:** Reputação · Ambição · Lealdade · Salário · Idade (evoluem e se aposentam) · "homem de confiança" de técnicos.
+**Lealdade x ambição** (quando chega uma proposta de fora): lealdade acima da ambição → fica; lealdade intermediária (acima de um limiar, abaixo da ambição) → **pede aumento para ficar**; lealdade baixa → quer sair. **A mesma regra vale para os jogadores** (ex.: craque recebe proposta da Europa e pede aumento para ficar).
+
+| Cargo | Atributos (1 a 20) |
+|---|---|
+| Auxiliar técnico | Leitura de jogo (sugestões nas pausas) · Treino técnico (traços, atributos) · Treino tático (entrosamento) · Comando (assume quando delegado ou expulso) |
+| Preparador físico | Recuperação · Prevenção de lesões · Condicionamento |
+| Treinador de goleiros | Técnica de goleiro · Estudo de batedores (pênaltis) |
+| Analista de desempenho | Profundidade do relatório · Precisão · Leitura ao vivo (pausas) · Bola parada ensaiada |
+| Olheiro de jogadores atuais | Precisão da avaliação atual · Alcance (jogadores observados por mês) |
+| Olheiro de potencial | Precisão da avaliação de potencial · Alcance |
+| Olheiro de jovens | Faro (achar talentos escondidos) · Alcance |
+| Coordenador da base | Formação · Captação (qualidade das safras) · Integração ao profissional |
+| Departamento médico (cargo único) | Diagnóstico · Tratamento · Readaptação (risco de recaída) |
+| Psicólogo esportivo | Gestão emocional · Formação de jovens (perfis) · **Amenizar defeitos** (reduz a frequência e a intensidade; **nunca remove**: o defeito faz parte do jogador) |
+| Diretor de futebol | Negociação (**desconto percentual no valor**, conforme a qualidade) · Rede de contatos · Gestão de elenco · Blindagem do técnico |
+| Gerente comercial | Negociação comercial (melhora percentual nos patrocínios) · Ingressos e sócio · Marketing |
+
+Os 3 olheiros atuam em qualquer lugar (sem região).
+
+**Automático ou manual:** o diretor de futebol e o gerente comercial podem negociar sozinhos, mas o usuário pode **sempre negociar à mão**. A negociação manual simula uma negociação real: o outro lado responde e faz contrapropostas, com valor, parcelas, **luvas**, **bônus** (quando pedidos), percentual de revenda. O desconto do diretor (e a melhora do gerente) vale nos dois modos.
+
+**Regras gerais:** o salário cresce muito com a qualidade · **a estrutura do clube multiplica o efeito da comissão** · rivais fazem propostas pelos seus profissionais (mercado vivo).
+
+### Bloco 6 — Técnicos, empresários e diretoria (aprovado)
+**Técnicos**
+- **Atributos (1–20):** Leitura Tática · Ajuste nas Pausas · Motivação · Gestão de Grupo · Desenvolvimento de Jovens · Disciplina · Treino Tático (entrosamento) + Reputação · Ambição · Lealdade. Todos inventados (nenhum técnico real ficcionalizado).
+- Reação nas pausas (IA): Conservador · Agressivo · Adaptável · Teimoso · Calculista (explora as brechas que você abre)
+- Temperamento: Paizão · Linha-dura · Gestor
+- Imprensa: polêmico ou discreto · preferência por jovens ou veteranos · ambição e lealdade (pode sair no meio da temporada)
+
+**Empresários:** Ganância · Influência · Memória de relacionamento com cada clube. Perfis: Parceiro · Mercenário · **Blefador** (inventa propostas; o diretor de futebol pode descobrir o blefe pela Rede de contatos) · Protetor.
+
+**Diretoria**
+- Presidente: Paciência · Ambição · Perfil financeiro (gastador, austero, equilibrado) · Interferência (centralizador ou delegador) · Popularidade
+- **Metas da temporada negociáveis** (prometer mais em troca de orçamento), **limitadas pela saúde financeira** do clube
+- Barra de **confiança no técnico** (resultados, metas, humor da torcida); zerou, demissão
+- **Eleição a cada 3 temporadas**, com candidatos e propostas próprias. O técnico pode **apoiar um candidato publicamente** (ganha força se ele vence; fica ameaçado se perde). **Em ano de eleição, o clima político esquenta**: mais boatos, cobranças e notícias, conforme o desempenho
+- SAF: o investidor é uma diretoria especial (muito dinheiro, metas financeiras rígidas, pouca paciência com prejuízo)
+
+### Perfis de clube (aprovado)
+| Perfil | Situação | Desafio |
+|---|---|---|
+| Gigante rico | Muito dinheiro, torcida enorme | Pressão por títulos |
+| Gigante endividado | Tradição, cofre vazio | Montar time sem dinheiro; candidato a SAF |
+| Formador | Pouco dinheiro, ótima base | Revelar e vender jovens |
+| Emergente | Investimento recente (SAF ou mecenas) | Dinheiro alto, pouca torcida e tradição |
+| Tradicional médio | Equilibrado | Vaga na Libertadores, títulos de copa |
+| Pequeno sobrevivente | Orçamento mínimo | Não cair; empréstimos e jogadores livres |
+O perfil define orçamento, estrutura da base, metas típicas, paciência da torcida e política de mercado. **Muda com o tempo** conforme a gestão.
+
+### Imprensa (aprovado)
+- **Coletivas:** tons Blindar o elenco · Cobrar os jogadores · Provocar o rival (sobe o ímpeto do adversário no clássico) · Culpar a arbitragem · Humildade. O efeito depende do momento (fase boa ou ruim). Técnicos rivais respondem conforme o perfil (polêmico ou discreto). O jogador escolhe entre 3 ou 5 respostas escritas para cada pergunta, cada uma com efeito próprio.
+- **Falas de jogador:** quem tem Qualidade, Defeito ou Perfil de jovem no elenco pode dar declaração individual à imprensa, com efeito positivo ou negativo em moral, humor, confiança e ímpeto do rival.
+- **5 repórteres fictícios:** Setorista (bastidores confiáveis) · Sensacionalista (faz de problema uma crise) · Analista tático (comenta as suas escolhas táticas) · Insider do mercado (rumores, alguns falsos) · Comentarista torcedor (termômetro da torcida).
+- **Página de notícias:** gerada pelos acontecimentos (resultados, mercado, crises, eleição, lesões, declarações) a partir de modelos de texto prontos (sem IA no jogo). Cada notícia tem credibilidade e mexe no humor da torcida e na confiança da diretoria.
+
+## Motor de partida (conceito)
+Detalhamento em `GDD-motor.md` (decisões iniciais aprovadas em 09/11/2026: 100 a 120 cadeias por jogo; zebra de 12% a 25% conforme o plano; 2,5 gols só como referência da média da temporada, sem meta nem compensação dentro do jogo, para táticas defensivas poderem gerar placares baixos ou 0 a 0; pausas automáticas com "seguir sem mexer"; substituição só nas pausas, salvo lesão). Pedido do Gustavo (09/11/2026): elenco insatisfeito aceita pior os ajustes nas pausas e só recusa em caso extremo e por pouco tempo ("Respaldo do elenco", seção 7, aprovado). Pedido do Gustavo (09/11/2026): em perigo extremo de gol, o jogador amarelado pode arriscar o vermelho, por julgamento próprio (Decisão), sem ordem do técnico ("Dividida decisiva", seção 8, aprovada).
+- Simulação por **zonas e eventos** (grade de cerca de 6x5); cada posse é uma cadeia de eventos com probabilidade.
+- **Instruções por posição** como tags, com **matriz de sinergias e conflitos** (ex.: ponta "corta pra dentro" + "falso 9" = espaço na meia-esquerda).
+- **Estilos**: confronto por características contra o elenco em campo (Bloco 3), sem tabela; zebra com **variância calibrada**.
+- **Pausas a cada 15 min** (6 blocos), com relatório cuja qualidade depende do analista de desempenho.
+- Visual: primeiro texto e estatísticas; depois 2D visto de cima.
+- **Traços dos jogadores** aumentam a eficácia das instruções que combinam com eles.
+- **Técnicos da IA** têm perfil de reação nas pausas (conservador, agressivo, adaptável, teimoso, calculista).
+
+## 12 estilos
+| Estilo | Força | Brecha |
+|---|---|---|
+| Posse Posicional | Controle | Pressão coordenada |
+| Pressão Pós-Perda | Recupera perto do gol | Cansaço, costas |
+| Contra-Ataque | Pune quem sobe | Propor o jogo |
+| Bloco Baixo | Difícil de furar | Cede iniciativa |
+| Jogo Direto | Simples | Perde a posse |
+| Jogo pelas Pontas | Amplitude | Previsível contra zaga alta |
+| Ginga | Improviso individual | Depende de craques |
+| Equilíbrio | Sem fraquezas claras | Sem forças claras |
+| Encaixe Individual | Anula as peças-chave | Um drible desmonta |
+| Jogo Apoiado | Criatividade coletiva | Exposto na perda da bola |
+| Transição Vertical | Velocidade após recuperar | Erra passes |
+| Bola Parada | Gols de escanteio e falta | Pouca criação |
+
+## Origens do técnico do jogador
+Ex-craque · Ex-jogador operário · Estudioso · Ex-analista de desempenho · Formador da base · Gringo · Ex-preparador físico. Cada uma tem um bônus e um ponto fraco. **Valem também para os técnicos da IA.** Bônus / ponto fraco: Ex-craque Motivação / Treino Tático · Ex-operário Gestão de Grupo / Leitura Tática · Estudioso Leitura Tática / Motivação · Ex-analista Ajuste nas Pausas / Gestão de Grupo · Formador Jovens / Disciplina · Gringo Treino Tático / Gestão de Grupo (adaptação) · Ex-preparador Disciplina / Ajuste nas Pausas.
+
+## Gestão
+Detalhamento em `GDD-gestao.md` (decisões iniciais aprovadas em 09/11/2026, incluindo Série B sem queda e Europa como compradora).
+- **Comissão**: preparador físico, analista de desempenho, olheiros, coordenador da base, departamento médico, auxiliar técnico, diretor de futebol, **psicólogo esportivo** (ameniza defeitos, cuida da moral, molda os perfis de jovem), treinador de goleiros, gerente comercial. Detalhes no bloco 5. Química com o técnico (pode chegar ou sair junto com ele).
+- **Neblina de informação**: atributos aparecem como estimativas; olheiros melhores dão mais precisão.
+- **Negociação** com chance de sucesso visível e sorteio (jogadores, clubes, patrocinadores).
+- **Delegação**: o jogador pode delegar o lado técnico ou o de gestão.
+- **Eventos aleatórios com escolhas**, em cadeia.
+- **SAF**: busca clubes pequenos para injetar dinheiro ou tradicionais quebrados. Vantagens: dinheiro, estrutura. Desvantagens: menos autonomia, metas do investidor, torcida dividida.
+
+## Geradores e ferramentas (ordem de dependência)
+0. **Base de dados de referência** (documento, não gerador): escalas, estilos, instruções, traços, cargos.
+1. `conversor-clubes` ✅ (criada em 07/11/2026): converte uma liga inteira por vez; lista de 2026 pesquisada na web e confirmada pelo Gustavo; cidade real; saída em Markdown (`dados/clubes/<liga>.md`) + `dados/clubes/_origem.md` (fictício → real, interno).
+   - Ligas convertidas: Série A, Série B e Argentina (07/11/2026; nomes aprovados provisoriamente) , Colômbia (07/11/2026; nomes aprovados), Chile (07/11/2026; nomes aprovados) e Europa (07/11/2026; nomes aprovados). Todas as ligas convertidas. Rivais pendentes: nenhum.
+2. `gerador-clubes` ✅ (criada em 07/11/2026): clubes **de reserva** (fora das 76 vagas; não jogam até os estaduais entrarem), em lote (padrão 10). Rivais pendentes inspirados no rival real (registrados em `_origem.md`) ou clubes puros. Ficha completa. Saída: `dados/clubes/reserva.md`; atualiza a ficha do rival no jogo.
+   - Lote 1 (07/11/2026): 13 rivais pendentes gerados (nomes aprovados).
+3. `gerador-tecnicos` ✅ (criada em 07/11/2026): um lote por liga + lote de livres (padrão 15); Europa com ficha reduzida. Saída: `dados/tecnicos/<liga>.md`.
+   - Lote Série A (07/11/2026): 20 técnicos (nomes aprovados).
+   - Lote Série B (07/11/2026): 10 técnicos (aprovado).
+   - Lote Argentina (07/11/2026): 10 técnicos (aprovado).
+   - Lotes Colômbia (10), Chile (10), Europa (16, ficha reduzida) e livres (15) (07/11/2026): gerados de uma vez a pedido do Gustavo; aguardam revisão. **Todos os 101 técnicos criados.**
+4. `gerador-comissao` ✅ (criada em 07/11/2026): um lote por liga (12 cargos por clube; Europa sem comissão) + livres (padrão 36). Tabela por clube; qualidade = reputação do clube ±3 ajustada pelo perfil; 1–2 joias por clube; química 1–20 com o técnico, homens de confiança ★ (15+). Saída: `dados/comissao/<liga>.md`.
+   - Lote Série A (07/11/2026): 240 profissionais (aprovado).
+   - Lote Série B (07/11/2026): 120 profissionais (aprovado).
+   - Lote Argentina (07/11/2026): 120 profissionais; salários pela metade da referência (aprovado).
+   - Lote Colômbia (07/11/2026): 120 profissionais (aprovado).
+   - Lote Chile (07/11/2026): 120 profissionais (aguarda revisão).
+   - Lote livres (07/11/2026): 36 profissionais, 3 por cargo, 6 ex-★ (aguarda revisão).
+5. `gerador-elenco` ✅ (criada em 07/11/2026): **elenco completo à mão** (decisão do Gustavo), 25–28 por clube, **Europa igual às outras ligas**; lotes de até 5 clubes; camadas (craque, titular, reserva, jovem, veterano) pela reputação e perfil do clube; nota = média de 6 atributos-chave por posição (pesos provisórios); + livres (padrão 30). Saída: `dados/elencos/<liga>/<SIGLA>.md` + `dados/elencos/_nomes.md`.
+   - Lote Série A 1 (07/11/2026): Abaeté, Alterosa, Araucária, Atlântico, Bandeirantes (130 jogadores; aguarda revisão).
+   - Lote Série A 2 (07/11/2026): Caravela, Garibaldi, Guanabara, Iguaçu, Imperial (130 jogadores; aguarda revisão). Regra extra: apelido não pode ser sobrenome de técnico.
+   - Lote Série A 3 (07/11/2026): Inconfidência, Ipê Amarelo, Itapuã, Leste Paulista, Mantiqueira (130 jogadores; aguarda revisão). Atributos fora das chaves com piso (físico 6, mental 4) para notas baixas.
+   - Lote Série A 4 (07/11/2026): Marajó, Minuano, Pampa, Portuária, Vale Verde (130 jogadores; aguarda revisão). **Série A completa: 20 clubes, 520 jogadores.**
+   - Lote Série B 1 (07/11/2026): Anhanguera, Araguaia, Boa Viagem, Canavieiro, Capibaribe (130 jogadores; aguarda revisão).
+   - Lote Série B 2 (07/11/2026): Carvoeiro, Iracema, Jangada, Liberdade, Mogiana (130 jogadores; aguarda revisão). Jangada no 3-5-2 (5 ZAG, 3 MO, 2 PON) e Mogiana no 4-3-1-2 (3 MO, 3 PON). **Série B completa: 10 clubes, 260 jogadores.**
+   - Lote Argentina 1 (08/11/2026): Alameda, Arrabal, Barranca, Diagonal, La Forja (130 jogadores; aguarda revisão). Arrabal no 4-3-1-2 (3 MO, 3 PON), Diagonal no 3-5-2 (5 ZAG, 3 MO, 2 PON).
+   - **Regra nova (08/11/2026, pedido do Gustavo):** craque de verdade (nota 19–20) só em clubes **Gigante rico**, teto por liga: **Série A 6, Argentina 4, Colômbia 3, Chile 3** (decidido em 08/11/2026; Série B sem craque por não ter Gigante rico; Europa tem regra própria); nos demais o melhor é destaque (rep +1 a +2, máx. 18); titular comum máx. 18; cada elenco com 1 setor forte e 1 fraco; o melhor jogador varia de posição. **Série A ajustada (08/11/2026):** craques 19–20 só nos Gigantes ricos: Guanabara (Moacir, Lucumí), Garibaldi (Gianotti, Bonfanti) e Alterosa (Joca Montes, Ítalo Rebouças); 45 jogadores rebaixados (Serrão incluído) para 18 ou rep +2 (rep +1 nos pequenos), atributos-chave baixados e potencial = nota acima de 30 anos; salários e valores mantidos; setor forte/fraco não aplicado retroativamente. **Série B ajustada:** sem Gigante rico, logo sem craque; 10 destaques rebaixados 1 ponto (rep +2, rep +1 nos pequenos).
+   - Lote Argentina 2 (08/11/2026): Oeste Porteño, Pampero, Riachuelo, Saavedra, Tango (130 jogadores; aguarda revisão), já com a regra nova. Craques da Argentina só nos 2 Gigantes ricos: Morello e Battistini (Riachuelo), Echavarría e Cebrián (Saavedra); Cardone (La Forja) baixou para 18. Tango no 3-4-2-1 (5 ZAG, 3 MO, 2 PON). **Argentina completa: 10 clubes, 260 jogadores.**
+   - Lote Colômbia 1 (08/11/2026): Aburrá, Barlovento, Chicamocha, Combeima, Farallones (130 jogadores; aguarda revisão), com a regra nova. Craques 19–20 só nos Gigantes ricos: Echeverri e Insaurralde (Aburrá), Cassiani (Barlovento); teto da liga (3) atingido. Combeima no 3-5-2 (5 ZAG, 3 MO, 2 PON).
+   - Lote Colômbia 2 (08/11/2026): Monserrate, Nevado, Nutibara, Pance, Sabana (130 jogadores; aguarda revisão). Sem craque 19–20; Gigantes endividados com destaque veterano (Valdés no Pance, Ricaurte no Sabana) e salários atrasados. Sabana no 3-4-3 (5 ZAG, 3 PON). **Colômbia completa: 10 clubes, 260 jogadores.**
+   - Lote Chile 1 (08/11/2026): Altohorno, Cachapoal, Herradura, Mapocho, Manquehue (130 jogadores; aguarda revisão). Craque 19–20: Leyton (Manquehue, MC 19); restam 2 vagas da liga para o Toqui. Mapocho (Gigante endividado) com destaque veterano Oñate (ZAG 18), salários atrasados, 4-3-1-2 (3 MO, 3 PON). Manquehue (Gigante rico) com 5 estrangeiros.
+   - Lote Chile 2 (08/11/2026): Olivar, Reñaca, Socavón, Tirreno, Toqui (130 jogadores; aguarda revisão). Craques 19–20 do Toqui: Jiménez (CA 20) e Aedo (VOL 19); teto da liga (3) atingido. Olivar no 3-5-2 (5 ZAG, 3 MO, 2 PON). Socavón pequeno sobrevivente (sem craque, 3 emprestados). **Chile completo: 10 clubes, 260 jogadores.**
+   - Regra Europa (08/11/2026, Gustavo): todo clube europeu tem pelo menos 8 craques 19–20; camadas pela Força (14–16: 8–9 craques; 17: 9–10; 18–19: 10–11), sem teto de 3 por liga. Registrada no gerador.
+   - Lote Europa 1 (08/11/2026): Brera, Docklands, Dora, Emscher, Holloway (130 jogadores; aguarda revisão). Craques: BRE 8, DOC 11, DOR 8, EMS 8, HOL 10; 10 estrangeiros e 3 sul-americanos por clube; salário ×3 e valor ×2. Dora no 3-5-2.
+   - Lote Europa 2 (08/11/2026): Irwell, Isartal, Kensington, Lavapiés, Lutèce (130 jogadores; aguarda revisão). Craques: IRW 11, ISA 11, KEN 8, LAV 8, LUT 10.
+   - Lote Europa 3 (08/11/2026): Meseta, Navigli, Pennine, Ribeira, Tejo (130 jogadores; aguarda revisão). Craques: MES 11 (4 com nota 20), NAV 10, PEN 8, RIB 8, TEJ 9. Navigli no 3-5-2.
+   - Lote Europa 4 (08/11/2026): Tibidabo (26 jogadores; aguarda revisão). 10 craques (3 com nota 20); setor forte meio-campo, fraco zaga central. **Europa completa (16 clubes).**
+   - Lote livres (08/11/2026): 30 jogadores sem clube em `dados/elencos/livres.md`, notas 6 a 14 (11 veteranos, 11 dispensados, 8 jovens; 22 BRA, 2 ARG, 2 COL, 2 CHI, 1 ITA, 1 POR), salário sem multiplicador de liga (aguarda revisão). **Elencos concluídos.**
+   - Revisão completa dos elencos pulada (08/11/2026, decisão do Gustavo): liberados para uso; ajustes pontuais depois.
+6. `gerador-comercial` ✅ (criada em 08/11/2026): um lote por liga. Ficha completa nos 30 brasileiros (caixa, dívida, receita, TV, 3 cotas de patrocínio, público, SAF); ficha reduzida nos sul-americanos e europeus (folha, teto, orçamento). **Receita calculada sobre o custo real do clube × fator do perfil**, não sobre valores do futebol real. Imagem (até 40% pela Lei Pelé), luvas, bônus e cláusulas são regras do jogo, sem dado por jogador. Saída: `dados/comercial/<liga>.md` + `_marcas.md`.
+   - Lote Série A (08/11/2026): 20 clubes, 29 marcas fictícias (aguarda revisão). SAF: Alterosa, Araucária, Atlântico, Inconfidência, Itapuã, Mantiqueira. Ocupação mínima do gerador baixada para 15% (pequenos não fechavam a conta).
+   - Lote Série B (08/11/2026): 10 clubes, 13 marcas novas (42 no total; aprovado). SAF: Canavieiro, Iracema.
+   - Lotes reduzidos (08/11/2026): Argentina, Colômbia, Chile (10 clubes cada) e Europa (16), aprovados. Série A revisada por script e aprovada (Caravela segue Associação: a SAF fracassou). **Comercial concluído.**
+7. `gerador-empresarios` ✅ (criada em 08/11/2026): 40 empresários em 3 lotes (Brasil 20, América do Sul 10, Europa 10). Carteira de 10 a 20 clientes de destaque, à mão; os demais jogadores recebem empresário por regra no início do jogo. Memória de −5 a +5 por clube, só exceções listadas. Faixas de ganância por perfil são provisórias. Saída: `dados/empresarios/<lote>.md`.
+   - Lote Brasil (08/11/2026): 20 empresários, 301 clientes dos 487 candidatos (aprovado). Livres ficam fora das carteiras.
+   - Lotes América do Sul e Europa (08/11/2026): 10 empresários cada, 149 e 153 clientes (aprovados). Total: 40 empresários, 603 clientes. **Empresários concluídos.**
+8. `gerador-diretoria` ✅ (criada em 08/11/2026): um lote por liga. Ficha completa nos 30 brasileiros (presidente ou investidor com representante, atributos, mania do Centralizador, metas padrão/ousada/modesta, 2–3 promessas, eleição na temporada 1, 2 ou 3, 2 candidatos de oposição com atributos completos); ficha reduzida (tabela) nos sul-americanos e europeus. Saúde financeira = dívida ÷ receita (Boa até 0,30; Média até 1,00; Crítica acima), define o teto do bônus da meta ousada (+25%, +15%, +5%). Faixas e tetos são provisórios. Saída: `dados/diretoria/<liga>.md`.
+   - Lote Série A (08/11/2026): 20 clubes (14 presidentes, 6 SAFs), 48 nomes (aprovado). Caravela: bônus da meta ousada vale zero, pois o orçamento é R$ 0.
+   - Lote Série B (08/11/2026): 10 clubes (8 presidentes, 2 SAFs), 26 nomes (aprovado). Metas dos Tradicionais médios: reputação 14+ sobe para Acesso; 11 desce para Meio de tabela.
+   - Lotes reduzidos (08/11/2026): Argentina, Colômbia, Chile (10 cada) e Europa (16), 46 presidentes (aprovados). **Diretorias concluídas: 76 clubes.**
+9. `gerador-eventos` ✅ (criada em 08/11/2026): modelos à mão com espaços preenchidos pelo banco; 9 temas, 120 eventos no padrão (VES 20, MER 15, DIR 20, TOR 15, COM/BAS/FIN/IMP/CPT 10 cada), só para o clube do jogador. Efeitos em letras P/M/G (tabela única, valores provisórios); pesos de frequência provisórios (12/5/1); dinheiro relativo à folha; sorteio com chance visível; escolha padrão para delegação ou prazo vencido; evento não demite direto. Saída: `dados/eventos/<tema>.md`.
+   - Lote vestiário (08/11/2026): 20 eventos, 3 cadeias (Vestiário rachado, Vida noturna, Braçadeira em disputa); aprovado.
+   - Lote mercado (08/11/2026): 15 eventos, 2 cadeias (Cobiça de fora, Proposta de gaveta); aprovado. Novo efeito `Folha` na tabela do gerador (provisório: 1/2/4%).
+   - Lote diretoria (08/11/2026): 20 eventos, 3 cadeias (Ano de urnas, Reforço da presidência, Planilha da SAF); aprovado.
+   - Lote torcida (08/11/2026): 15 eventos, 2 cadeias (Organizada na porta, Arquibancada vazia); aprovado.
+   - Lote comissão (08/11/2026): 10 eventos, 1 cadeia (Braço direito cobiçado); aprovado.
+   - Lote base (08/11/2026): 10 eventos, 1 cadeia (Joia deslumbrada); aprovado. Marcas `bem trabalhado` e `mal trabalhado` alimentam a evolução dos perfis de jovem.
+   - Lote finanças (08/11/2026): 10 eventos, 1 cadeia (Bloqueio judicial); aprovado.
+   - Lote imprensa (08/11/2026): 10 eventos, 1 cadeia (Fonte no vestiário); aprovado. Alvo ganhou filtros Repórter e Imprensa do técnico rival.
+   - Lote competição (08/11/2026): 10 eventos, 1 cadeia (Três frentes); aprovado. **Eventos concluídos** (9 temas, 122 eventos).
+   - Acréscimo (09/11/2026): 2 eventos obrigatórios, `DIR-021` (ultimato) e `FIN-011` (salários atrasados), aprovados na seção 10 do GDD de Gestão. Nova frequência `Obrigatório` e gatilho `Folha atrasada` no gerador.
+10. `gerador-narracao` ✅ (criada em 08/11/2026): frases à mão com espaços do banco; 12 temas, 300 frases no padrão; duas vozes fictícias (Narrador e Comentarista, 20% a 30%); contexto por placar, minuto, tipo de jogo, ímpeto, traços e estilo; 1 frase de até 140 caracteres; sem bordões reais. Saída: `dados/narracao/<tema>.md`.
+   - Lote gol (08/11/2026): 40 frases (30 narrador, 10 comentarista); aprovado.
+   - Lote finalização (08/11/2026): 35 frases (26 narrador, 9 comentarista); aprovado.
+   - Lote goleiro (08/11/2026): 25 frases (19 narrador, 6 comentarista); aprovado.
+   - Lotes de 09/11/2026, aprovados: jogada 35 (27 N, 8 C); falta 30 (22, 8); lesão 15 (12, 3); bola parada 25 (19, 6); pênalti 20 (16, 4); abertura 20 (15, 5); pausas 20 (14, 6); ímpeto 20 (16, 4); fogo 15 (12, 3). Total da narração: 300 frases, 12 temas.
+   - Lote adicional de 09/11/2026 (lances novos do GDD do motor), aprovado: jogada +6 (combinação descoberta); pausas +6 (recusa do elenco); falta +12 (dividida ganha, perdida e evitada). Total: 324 frases.
+10b. `gerador-imprensa` ✅ (criada em 09/11/2026): modelos à mão com espaços do banco; 10 temas, 345 itens no padrão (5 repórteres, 130 notícias, 40 perguntas, 136 opções de resposta, 34 falas de jogador). Notícia com repórter ou Redação, credibilidade e efeito P/M/G em Humor e Confiança. Provisórios: multiplicador por credibilidade (100/70/40%), chance de rumor se confirmar (85/55/25%) efeito por opção e ajuste por fase (fase ruim sobe um nível o efeito negativo; fase boa desce), frequência das falas de jogador. Saída: `dados/imprensa/<tema>.md`.
+   - Lote repórteres (09/11/2026): Zuleide Prates (Setorista), Nestor Alarcão (Sensacionalista), Ícaro Tavernard (Analista tático), Caíque Furtado (Insider do mercado), Jurema Pacheco (Comentarista torcedor); aprovado.
+   - Lote resultados (09/11/2026): 30 notícias, 8 assuntos; aprovado. Goleada sem contexto = aplicada; sofrida usa `Resultado goleado`. `{sequencia}` vem pronto do banco.
+   - Lote mercado (09/11/2026): 30 notícias, 6 assuntos (11 do Insider); aprovado.
+   - Lote crises (09/11/2026): 20 notícias, 5 assuntos; aprovado. Protestos apimentados a pedido do Gustavo: torcida revoltada pode ser quente (faixas pesadas, cobrança cara a cara, cerco à sede ou ao ônibus), sem agressão física.
+   - Lote eleição (09/11/2026): 15 notícias, 4 assuntos; aprovado. Em Resultado da eleição, `{candidato}` é quem venceu, mesmo se for reeleição.
+   - Lote lesões (09/11/2026): 15 notícias, 4 assuntos; aprovado.
+   - Lote declarações (09/11/2026): 20 notícias, 4 assuntos; aprovado.
+   - Lote coletiva (09/11/2026): 40 perguntas, 8 assuntos; aprovado.
+   - Lote respostas (09/11/2026): 136 opções, 3 por pergunta e 5 na mais quente de cada assunto, cada uma com efeito próprio; aprovado.
+   - Lote falas de jogador (09/11/2026): 34 falas, uma positiva e uma negativa para cada um dos 17 perfis; aprovado. **Imprensa concluída** (10 temas, 345 itens).
+11. `validador-dados` ✅ (criada em 09/11/2026): script `validar.py` confere todas as pastas contra a base e entre si; relatório em `dados/_validacao.md`. Só aponta: correção depende de aprovação.
+   - Correção (09/11/2026, decisão do Gustavo): 38 traços que eram instruções do Bloco 2 trocados nos elencos (`Ataca a profundidade` → `Infiltrador`, 16, e `Oportunista`, 1 que já tinha Infiltrador; `Fica para defender` → `Leitor de cobertura`, 21). Também corrigidos: Consistência de Ezequias (INC) de 21 para 20; médico do arquivo `comissao/argentina.md` renomeado de Jordi Puigvert para Ignasi Roqueta (nome repetido com técnico da Europa). Traço de Cornejo (ALH, volante) trocado de `Distribuidor` para `Passe em profundidade`. Validador ajustado: salário de jovens até 21 anos fora da faixa da nota; Gigante rico pode ter até 7 estrangeiros em qualquer liga. Resultado: 0 erros e 25 avisos, revisados e mantidos por decisão do Gustavo (10 salários de destaques, 9 apelidos iguais a sobrenome de técnico de outro clube, 6 orçamentos pouco acima do perfil). Contagem de traços do Bloco 4 corrigida de 34 para 29, o número real da lista.
+12. `gerador-tatica` ✅ (criada em 09/11/2026): dados táticos em `dados/tatica/`, 4 lotes em ordem: estilos (12), instruções (34), formações (10), combinações (15 a 20). Zonas: PE, ME, CE, MD, PD × F1 a F6; nas instruções, corredor relativo (Lado, Meia, Centro, Meia oposta, Lado oposto). Entrosamento e bônus provisórios. Ao fim dos lotes, incluir a pasta no `validador-dados`.
+   - Lote estilos (09/11/2026): 12 estilos com as 6 notas, padrão de instruções do time, formações, posições favorecidas e entrosamento; aprovado.
+   - Lote instruções (09/11/2026): 34 instruções com fase, etiquetas de zona, chaves, traços, custo e estilos compatíveis; aprovado. A Ponta não tinha instrução sem a bola: `Ataca a profundidade` da Ponta ficou como Sem (fica alto esperando o contra-ataque).
+   - Lote formações (09/11/2026): as 10 do catálogo, com a zona de cada peça; aprovado.
+   - Lote combinações (09/11/2026): 18 combinações ocultas com peças, zona, bônus, pista e revelação (7 Chance criada, 3 Posse, 3 Contra-ataque, 3 Proteção, 2 Recuperação); aprovado. Defensivas dependem quase todas do Goleiro-líbero: mais variedade exigiria mudar etiquetas das instruções.
+   - `dados/tatica/` incluída no `validador-dados` (domínio `tatica`, roda `conferir.py` nos 4 temas). Validação em 09/11/2026: 0 erros e os mesmos 25 avisos já revisados.
+13. `simulador-balanceamento` ✅ (09/11/2026; `npm run simular`, script em `codigo/terminal/cenarios.ts`).
+
+## Tecnologia (sugerida)
+TypeScript · motor de simulação puro e separado (Web Worker) · React · PixiJS (2D) · IndexedDB (salvamento local) · PWA → Capacitor (mobile) e Tauri (desktop/Steam) · Supabase só no futuro (contas, nuvem).
+
+## Etapas
+1. GDD (começando pelo motor de partida e pelas instruções por posição) ✅ (`GDD-motor.md` e `GDD-gestao.md`, concluído em 09/11/2026)
+2. Protótipo do motor em texto (iniciada em 09/11/2026; decisões: TypeScript rodando no terminal, código separado dos documentos, git só local; **por fatias, cada uma revisada pelo Gustavo**: 1ª partida completa entre 2 clubes com posse, disputas, gols, placar e narração; 2ª sinergias e confronto de estilos; 3ª energia e pausas; 4ª bola parada e cartões; 5ª lesões. Conversor lê `dados/` e gera JSON para o motor; os `.md` seguem como fonte)
+   - Código em `codigo/` (`conversor/`, `motor/` e `narracao/` puros, `terminal/`, `testes/`; `gerado/` não se edita). Comandos: `npm run dados`, `partida -- ALA BAR 42`, `medir`, `test`.
+   - 1ª fatia construída em 09/11/2026, **aguardando revisão do Gustavo**. Neutros marcados com `FATIA` no código. Números fora do GDD ficam em `PROVISORIO` (`motor/parametros.ts`), nenhum aprovado ainda.
+   - Zona sem marcador (decisão do Gustavo, 09/11/2026): marca quem está na zona vizinha, sem contar nos números; registrado no GDD, seção 3. Motivo: com 11 jogadores em 30 zonas, a F6 ficava sem defensor.
+   - Medição em 1.000 jogos: antes da regra, 11,52 gols, 52,9 finalizações e 0% de 0 a 0; depois, 3,70 gols, 39,4 finalizações, 3,1% de 0 a 0, 0,64 contra-ataque, 8,8 escanteios e 9,4% de conversão.
+   - 2ª fatia construída em 09/11/2026 (`motor/plano.ts`, `sinergias.ts`, `confronto.ts`), **aguardando revisão do Gustavo**. GDD 4 e 5 ligados: instruções, mapas de presença por jogador, sinergias, brechas, 18 combinações, 3 eixos, viabilidade e as 6 notas. Números novos fora do GDD em `PROVISORIO`, nenhum aprovado; os da 1ª fatia também seguem sem confirmação.
+   - Instruções dos clubes (decisão do Gustavo, 09/11/2026): **melhor encaixe**, regra fixa. Para cada jogador, a instrução da posição com maior eficácia final, nunca uma que Contraria o estilo, 1 com e 1 sem a bola. Combinações surgem só por acaso (GDD 4).
+   - Escolhas da fatia, a confirmar: jogador do centro com etiqueta de Lado ou Meia vale para os dois lados, dividindo o peso; entrosamento 1,0 até existir treino; limites de 15% e 25% aplicados por tipo de bônus; brechas somadas até 15%.
+   - Medição em 1.000 jogos, 1ª → 2ª fatia: gols 3,70 → 4,72 (meta 2,5); finalizações 39,4 → 41,6 (meta 25); 0 a 0 3,1% → 1,2% (meta 8%); contra-ataques 0,64 → 6,19 (meta 10); conversão 9,4% → 11,4%. Casa/empate/fora: 45,5/12,4/42,1 (meta 45/27/28, sem fator casa ainda). Só medido, nada calibrado.
+   - **Adaptação entre jogos (aprovada pelo Gustavo em 09/11/2026; implementar na etapa 3, que cria a memória entre jogos).** Técnico da IA tenta se adaptar ao plano do jogador em confrontos seguidos (returno, ida e volta), para o segundo jogo não repetir o roteiro do primeiro. Regras fixas, sem IA generativa.
+     - Memória técnico x jogador, dos últimos jogos: estilo e formações do jogador, eixo perdido, brecha sofrida, resultado.
+     - Tentativa, não acerto garantido: `Leitura Tática × 5%` identifica o problema real; se errar, só o ajuste padrão do perfil.
+     - Por perfil: Adaptável reverte o eixo perdido; Calculista mira a maior brecha do jogador; Conservador reduz Risco; Agressivo sobe a linha; Teimoso só muda se perdeu por 2 ou mais.
+     - Repetir o plano aumenta o valor da leitura; se o jogador mudar, o técnico se prepara para o plano antigo.
+     - Limite: 1 ou 2 mudanças por jogo, sem trocar de estilo.
+   - 3ª fatia construída em 09/11/2026 (`motor/clima.ts`, `pausas.ts`), **aguardando revisão do Gustavo**. Energia, moral, ímpeto, fator casa, 5 pausas com relatório, fala do intervalo, reações da IA pelos 5 perfis, trocas (até 5, energia abaixo de 50 a partir do minuto 60), "pôr fogo" por conta própria; Gelo, Líder, Raçudo, Ídolo/Cria, Incendiário e Preguiçoso.
+   - Escolhas da fatia, a confirmar (em `PROVISORIO`): os dois técnicos são IA, sem comando humano ainda; energia inicial 100, moral 60, recuperação 8; casa = 1 + (torcida − 10) × 0,1, entre 0 e 2; técnico se afasta no máximo 1 degrau do padrão do estilo; Adaptável e Calculista que erram a leitura mantêm o plano (GDD não define o "ajuste padrão" deles); Teimoso sobe a linha; custo de energia = o maior entre instrução com e sem bola; IA acerta o tom da fala com Motivação × 5%.
+   - Ficam para o comando humano nas pausas: empenho, custo de ajuste Médio e Radical, Plano B, Respaldo e recusa, relatório por analista, sugestões do auxiliar, ordem de "pôr fogo". Psicólogo e preparador entram com a Gestão.
+   - Lacuna de dados: os 16 técnicos da Europa não têm perfil de reação nem atributos de trabalho; nas pausas, não mexem e usam 10 em Motivação.
+   - Medição em 1.000 jogos, 2ª → 3ª fatia: gols 4,72 → 5,32 (meta 2,5); finalizações 41,6 → 42,1 (meta 25); 0 a 0 1,2% → 1,0% (meta 8%); contra-ataques 6,19 → 5,82 (meta 10); casa/empate/fora 45,5/12,4/42,1 → 56,4/9,0/34,6 (meta 45/27/28). Só medido, nada calibrado.
+   - 4ª fatia construída em 09/11/2026 (`motor/bolaparada.ts`, ligada em `partida.ts`), **aguardando revisão do Gustavo**. GDD 8 ligado: escanteio em 2 etapas, falta por zona, cobrança direta, cruzamento na área, pênalti, amarelo, segundo amarelo, vermelho, último defensor, dividida decisiva, -1 de desarme do amarelado, técnico expulso, goleiro expulso, troca de quem está com cartão em risco; Anexo A: Esquentado (com revide), Indisciplinado, Marrento, Decisivo.
+   - Escolhas da fatia, a confirmar (em `PROVISORIO`): "falta dura" = a que rende cartão (GDD não define); último defensor = contra-ataque sem outro defensor de linha entre a bola e o gol; Lado F6 é fora da área (reinício, sem pênalti); F6 usa 8% fixo, só Cava faltas soma; 25% das faltas perigosas batidas direto; sobem na área os 3 melhores pelo alto, sorteando um de cada lado; bola afastada: 70% recuperação da defesa, 30% lateral do ataque; pênalti sem gol: 65% defendido; Combatividade 15+ amarelo × 1,25; Desarme limpo × 0,75 nos dois cartões; -1 de desarme vale em drible e condução; cartão em risco = amarelado com Combatividade 15+, Esquentado ou Indisciplinado; expulso: quem joga à frente e está mais perto assume a zona; goleiro expulso com troca e reserva: sai o mais avançado; técnico expulso: 6%/2%/1% por bloco (Linha-dura/Paizão/Gestor) com ímpeto abaixo de -50; traços Batedor de escanteio e Cobrador de falta seguem a regra geral (+2, ou -1 com BP abaixo de 10).
+   - Ficam para depois: lesões (GDD 8, sem fatia definida), disputa de pênaltis e suspensões (etapa 3), batedores escolhidos na tática (comando humano), analista, treinador de goleiros e psicólogo (Gestão, valor neutro).
+   - Medição em 1.000 jogos, 3ª → 4ª fatia: gols 5,32 → 6,17 (meta 2,5); finalizações 42,1 → 40,2 (meta 25); 0 a 0 1,0% → 0,7% (meta 8%); contra-ataques 5,82 → 6,74 (meta 10); escanteios 8,6 → 7,8 (meta 10); amarelos 3,12 (meta 4); cobranças diretas 1,58 (referência 1,5); pênaltis 1,28 (referência 0,25; 0,38 vêm da dividida, o resto de falhas em F6); gols de bola parada 1,86 (referência 0,7); vermelhos 0,58; casa/empate/fora 59,7/8,8/31,5. Só medido; o único número ajustado foi o das cobranças diretas, que é escolha da fatia.
+   - **Calibração de placar (pedido do Gustavo em 09/11/2026: 6 gols tem de ser exceção).** Causa: dentro da área quase não há defensor (presença média 0,2 na F6 de quem ataca) e a bola entrava demais lá. Números do GDD mudados pela regra da seção 9, **confirmados pelo Gustavo em 09/11/2026**: tabela de chance por zona × 0,65 (`escalaZona`, a tabela do GDD segue escrita igual); bases: profundidade 45 → 38, lançamento 40 → 35, condução 70 → 62, drible 50 → 45, cruzamento 35 → 30; falta na F6 8% → 3%. `PROVISORIO`: posse resumida com base própria de 45 (usava 85 do passe curto); pesos de ação: profundidade F4 16 → 6 e F5 10 → 4, lançamento F3 8 → 4 e F4 3 → 1,5, finalização F5 28 → 16 e F6 76 → 50, passe curto F5 30 → 40 e F6 12 → 20; escanteio em bola fora na F6 e em bloqueio 50% → 70%.
+   - Medição em 1.000 jogos, antes → depois: gols 6,17 → 2,63 (meta 2,5); finalizações 40,2 → 27,2 (25); conversão 15,3% → 9,7% (10%); 0 a 0 0,7% → 9,8% (8%); contra-ataques 6,74 → 8,69 (10); amarelos 3,12 → 3,65 (4); pênaltis 1,28 → 0,34 (0,25); gols de bola parada 1,86 → 0,94 (0,7); vermelhos 0,58 → 0,52. Jogos com 6 gols ou mais: cerca de 54% → 8%. Fora da faixa: escanteios 6,96 (meta 8 a 12) e casa/empate/fora 49,5/21,7/28,8 (meta 45/27/28, ±4); cobranças diretas 2,20 (referência 1,5).
+   - Efeito colateral: o Perigo da dividida usa a chance já escalada, e o exemplo do GDD 8 (Perigo 27) agora dá cerca de 18. Limiares mantidos.
+   - **Revisão das fatias 2 a 4 (pacote aprovado pelo Gustavo em 09/11/2026).** Números do GDD mudados: Bloco 15+ sobe só quem não é zagueiro nem lateral (Pressão Pós-Perda de 37,0% para 47,7% de aproveitamento); IA troca abaixo de 65 de energia, era 50 (0,89 → 3,39 trocas por time); falta no teste da posse resumida acontece na zona de origem. `PROVISORIO` mudados: bloqueio e bola fora na F6 viram escanteio 70% → 85%, rebote 50% → 25%, `defesaDificilChance` 20 → 13.
+   - Corrigido para seguir o GDD: Fominha, Firuleiro, Inseguro e -0,10 de eficácia do Indisciplinado (faltavam); banco de 9 reservas; falta cruzada usa Cobrador de falta. Escolhas a confirmar: Fominha reduz passe curto e em profundidade, não lançamento e cruzamento; banco leva o melhor de cada posição da formação e completa por nota. `medir` agora compara casa/empate/fora só entre times iguais (titulares a menos de 0,5 de nota).
+   - Medição em 1.000 jogos, antes → depois: gols 2,63 → 2,32 (2,3 a 2,7); **0 a 0 9,8% → 13,2% (6 a 10, fora)**; finalizações 27,2 → 26,1; escanteios 6,96 → 9,03 (8 a 12); contra-ataques 8,69 → 8,60; cobranças diretas 2,20 → 1,21 (ref. 1,5); pênaltis 0,34 → 0,39; gols de bola parada 0,94 → 0,95; vermelhos 0,52 → 0,57. Times iguais: 46,8/30,2/23,0 (meta 45/27/28 ±4, fora abaixo). 12 estilos entre 42,5% e 47,7% de aproveitamento. Fraco vence com diferença de 3 a 4: 10,5%, medido antes do pacote.
+   - Sensibilidade da `escalaZona` em 2.000 jogos, sem aplicar: 0,65 dá 2,37 gols e 13,3% de 0 a 0; 0,70 dá 2,54 e 11,8%; 0,72 dá 2,61 e 11,4%; 0,75 dá 2,75 e 10,7%. Só a escala não fecha o 0 a 0 dentro da faixa de gols.
+   - **`escalaZona` 0,65 → 0,72 (aprovada pelo Gustavo em 09/11/2026).** Medição em 1.000 jogos: gols 2,54; 0 a 0 11,6% (6 a 10, fora); finalizações 26,1; conversão 9,7%; escanteios 8,93; contra-ataques 8,71; amarelos 3,71; cobranças diretas 1,20; pênaltis 0,42; gols de bola parada 0,99; vermelhos 0,58. Times iguais: 47,4/28,8/23,8 (visitante 0,2 abaixo da faixa).
+   - **`PROVISORIO` confirmado pelo Gustavo em 09/11/2026, em dois grupos.** Definitivos até a Gestão substituir, por serem entradas dela ou só texto: energia, moral, recuperação, entrosamento, analista, duração da bola parada, acréscimos, limites de narração, furada, reclamação e lateral longo. Pontos de partida, a calibrar no `simulador-balanceamento`: pesos de ação, destino, etiquetas, sinergias, notas, risco, bola na área, cartões e técnico expulso.
+   - Pendente: 0 a 0 acima da faixa (deixar para o simulador é a recomendação, sem decisão); 2º amarelo, vermelhos (42% dos jogos com expulsão), rebote só em texto e ímpeto de um gol sem efeito fora de casa.
+   - 5ª fatia construída em 09/11/2026 (`motor/lesoes.ts`, ligada em `partida.ts`), **aguardando revisão do Gustavo**. GDD 8 e 1 ligados: sorteio por jogador a cada bloco, energia × 2 e × 3, falta dura, gravidade, -1 e -10 da leve, saída na hora com o reserva da posição contando nas 5, time com 10 sem troca, goleiro lesionado (com troca entra o reserva e ninguém mais sai; sem troca, regra do goleiro expulso), acréscimos contando lesões, tema `lesao` na narração. Tempo fora só registrado em `ResultadoPartida.lesoes`, para a etapa 3. Preparador neutro, × 1, até a Gestão.
+   - Escolhas da fatia, a confirmar: "1% extra" = a chance normal mais 1 ponto; falta dura segue só em `cartaoDaFalta` (dividida perdida fica fora); sorteio no início do bloco, com a energia daquela hora, e a lesão cai numa cadeia sorteada do bloco, então quem entra no meio do bloco só sorteia no seguinte; a lesão leve repetida não soma outro -1, só os -10 de energia; a IA tira quem tem lesão leve na pausa, a partir do minuto 60 (mesma janela do cansaço); toda lesão conta nos acréscimos, leve inclusive; frases: leve só "Pancada", média e grave "Atendimento", "Saída de campo" e "Substituição" (há frase de Pancada que diz "continua em campo").
+   - Medição em 1.000 jogos, 4ª → 5ª fatia: **lesões médias ou graves 0,28 (0,2 a 0,4, dentro)**, todas 0,68; gols 2,54 → 2,61; 0 a 0 11,6% → 11,4% (segue fora); finalizações 26,1 → 26,1; escanteios 8,93 → 8,95; contra-ataques 8,71 → 8,73; amarelos 3,71 → 3,79; vermelhos 0,58 → 0,58. Times iguais: 47,4/28,8/23,8 → 48,9/27,1/24,0 (dentro). Só medido, nada calibrado; as diferenças cabem no ruído de 1.000 jogos.
+   - Lesão e troca convivem: das lesões que tiram de campo, 6,8% pegam o time sem troca; 1,9% dos jogos têm time reduzido por lesão. Sem necessidade de a IA guardar troca.
+   - **5ª fatia aprovada pelo Gustavo em 09/11/2026, com as escolhas acima.** 0 a 0 e mando de campo ficam para o `simulador-balanceamento`. Conferência: fórmula, fatores e gravidades batem com o GDD 8; 37 testes e tipos ok; nenhum erro de regra. Único detalhe, só de texto: em pênalti com falta dura, a saída do lesionado é narrada antes do "Marcado". Medição em 5.000 jogos: gols 2,64; 0 a 0 10,5% (acima por 0,5); lesões médias ou graves 0,27; times iguais 50,0/27,5/22,5 (casa e fora saem da faixa; o "dentro" de 1.000 jogos era ruído). Diagnóstico em 20.000 jogos entre quaisquer clubes: diferença de força abaixo de 1 dá 2,14 gols e 13,5% de 0 a 0 (Poisson 11,8%); acima de 3 dá 3,59 gols e 5,5%. O 0 a 0 vem de jogos equilibrados com poucos gols, e não de erro próprio. Medições passam a usar 5.000 jogos (GDD 9 atualizado).
+   - **Ferramenta `simulador-balanceamento` criada em 09/11/2026.** 1ª rodada, 5.000 jogos por cenário, nada calibrado. Fora da faixa: 0 a 0 10,5%; times iguais 50,0/27,5/22,5; dois Blocos Baixos 1,82 gols (1,0 a 1,6; o 0 a 0 de 20,0% está dentro); dois de Risco alto 2,56 gols (3,2 a 4,0; Risco alto = nota 15+, escolha do script). Dentro: gols 2,64, finalizações, contra-ataques, escanteios, amarelos, lesões e os 12 estilos (maior vantagem +2,9 pontos, limite 8). Leitura: os estilos mudam pouco o placar (0,74 gol entre os extremos, meta 2,3).
+   - Zebra, pendente de definição: fraco vence, com o estilo do próprio técnico, 3,9% com "3 ou mais", mas a amostra é dominada por diferenças de 5+ entre ligas (9,0% com diferença de 3 a 4; 5,7% de 4 a 5; 1,8% de 5+). "Plano certo" do GDD 9 é inalcançável: em 5.400 planos de time 3+ mais fraco, nenhum tem 2 eixos favoráveis (eixos comparam atributo absoluto), e todo plano tem brecha em pelo menos 2 das 30 zonas. Meta de 25% não pode ser medida até redefinir.
+   - **Definições do GDD 9 aprovadas pelo Gustavo em 09/11/2026:** bem mais fraco = diferença de 3 a 4; plano certo = viabilidade +1 ou mais e entre os 3 melhores dos 12 estilos no confronto, pela soma dos eixos menos a brecha média por zona. Medição em 2.500 jogos: fraco vence 9,5% com plano neutro ou ruim (10 a 15) e 10,9% com plano certo (22 a 28): **acertar o plano quase não muda o resultado.**
+   - Diagnóstico dos estilos (cenário `espelho`, cada estilo contra ele mesmo, 1.000 jogos), nada alterado no motor. Gols de 1,82 (Bloco Baixo) a 3,41 (Transição Vertical), amplitude 1,59 (meta 2,3); o "0,74" anterior subestimava, porque o grupo de Risco alto não é o extremo. Quem puxa gols é a Verticalidade, não o Risco. Contra-ataque é interruptor: `fora` em `inicioRecuperacao` é fixo por time, dá 0,00 em 9 estilos e de 28 a 39 nos 3 de Risco 15+; a média 8,9 da liga esconde isso.
+   - Protótipo fora do projeto, 2.000 jogos: sorteio por jogador a cada perda (chance por distância 5/20/45/75% + 3 pontos por nota de Risco acima de 10) deixa os contra-ataques graduais, de 0,84 a 26,3 entre estilos (liga 12,98, meta 8 a 12), sem mudar os gols. Defesa voltando mais devagar (Risco 15+ com +2 elos, teto 4) também não muda os gols: hipótese descartada. Causa de o contra-ataque não gerar gol ainda não isolada.
+   - **Sorteio de fora de posição aplicado com aprovação do Gustavo em 09/11/2026** (`motor/plano.ts`, GDD 2; `PROVISORIO.foraDePosicao`: 5/12/40/75% por distância + 3 pontos por nota de Risco acima de 10). Medição em 5.000 jogos, antes → depois: contra-ataques 8,92 → 10,01 (8 a 12); gols 2,64 → 2,64; 0 a 0 10,5% → 10,0%; times iguais 50,0/27,5/22,5 → 51,2/26,9/22,0 (casa e fora seguem fora); dois Blocos Baixos 1,84 gols; dois de Risco alto 2,54; 12 estilos, maior vantagem +3,5. Espelho: contra-ataques de 0,01 a 21,4, sem degrau. Zebra: 10,0% com plano neutro ou ruim, 10,8% com plano certo.
+   - Conversão por início de cadeia, por 100 cadeias (finalizações/gols): contra 22,7/1,98; recuperação 23,7/2,03; reinício 23,0/1,94; saída 13,3/1,02; escanteio 25,0/5,24; falta perigosa 39,5/5,24; continuação 44,9/4,72. **O contra-ataque rende o mesmo que uma recuperação comum**: o número de jogadores fora de posição é sorteado e descartado, sem entrar na disputa. Cenários `espelho` e `inicios` no `npm run simular`.
+   - Bônus de contra-ataque testado fora do projeto, sem aplicar (pontos na disputa por jogador fora de posição, 2.000 jogos; base de 5.000: 1,98 gols por 100 contra-ataques, 2,54 gols em dois de Risco alto). 1 ponto: 2,17 e 2,63; 2 pontos: 2,43 e 2,64; 3 pontos: 2,62 e 2,68. Mesmo com 3 pontos, são só +0,06 gol por jogo na liga: o contra-ataque responde por 0,20 gol e não fecha a meta de 3,6 sozinho. Dúvida a resolver: "Risco alto" pode querer dizer instruções de custo de Risco alto (buracos e brechas, GDD 4), e não nota 15+ do estilo, que foi escolha do script.
+   - Peso do plano, diagnóstico (2.500 jogos, sem aplicar): hoje a viabilidade é quase igual em plano neutro ou ruim (2,17) e plano certo (2,34), porque "Favorece − média geral do time" sai positivo para quase todo estilo; aumentar o limite não adiantaria. Protótipo fora do projeto, viabilidade relativa = Favorece do estilo − média de Favorece dos 12 estilos no mesmo elenco, limite ±3: neutro −0,03, certo +1,52; fraco vence 9,5% → **13,8%** (hoje 10,0% → 10,8%). Com os mesmos planos e peso maior: ×2 (limite 6) 8,7% → 15,0%; ×3 (limite 9) 9,0% → 15,9%; ×4 (limite 12) 8,9% → 18,0%. Só a viabilidade não chega aos 22% a 28%. 12 estilos com peso ×2 e ×3: maior vantagem +5,1 e +3,8 (1.000 jogos; limite 8).
+   - **Viabilidade relativa aplicada com aprovação do Gustavo em 09/11/2026** (`motor/confronto.ts`, GDD 5): Favorece do estilo − média dessa conta nos 12 estilos, no elenco em campo, limite ±3, sem multiplicador. Medição em 5.000 jogos, antes → depois: fraco vence, plano neutro ou ruim 10,0% → 9,6% (10 a 15; diferença dentro do ruído) e **plano certo 10,8% → 13,6%** (22 a 28); viabilidade média neutro 2,17 → −0,03 e certo 2,34 → 1,52; gols 2,64 → 2,66; 0 a 0 10,0% → 10,3%; contra-ataques 10,01 → 10,03; times iguais 51,2/26,9/22,0 → 52,2/25,9/22,0; dois Blocos Baixos 1,84 → 1,84; dois de Risco alto 2,54 → 2,56; 12 estilos, maior vantagem +3,5 → +5,2 (limite 8). "Elenco compatível" (viabilidade 0 ou mais) agora filtra muito: de 2 clubes (Bola Parada) a 70 (Ginga); critério a rever pelo Gustavo, não alterado.
+   - Peso do elenco testado com `--testar`, sem aplicar (`GDD.pontosPorAtributo`, 5.000 jogos), valores 3 (atual) / 2,5 / 2 / 1,5: fraco vence, plano neutro ou ruim 9,6 / 10,2 / 10,4 / 12,0% (10 a 15); plano certo 13,6 / 14,0 / 15,3 / 16,9% (22 a 28); times iguais, casa 52,2 / 49,1 / 47,8 / 45,2% (41 a 49) e fora 22,0 / 23,4 / 25,1 / 26,6% (24 a 32); gols 2,66 / 2,49 / 2,43 / 2,31 (2,3 a 2,7); 0 a 0 10,3 / 10,9 / 11,1 / 11,5% (6 a 10). Só 2 e 1,5, cenários restantes: dois Blocos Baixos 1,62 e 1,54 gols (1,0 a 1,6); dois de Risco alto 2,34 e 2,27 (3,2 a 4,0); 12 estilos, maior vantagem +4,5 nos dois (limite 8).
+   - **`pontosPorAtributo` 3 → 1,5 aplicado com aprovação do Gustavo em 09/11/2026** (`motor/parametros.ts`; vale para disputas, bola chega e duelo aéreo; GDD 3 e 8 atualizados, exemplo do drible 58% → 53%). Fora da faixa, com os números acima: 0 a 0 11,5%, plano certo 16,9%, dois de Risco alto 2,27 gols. Gols 2,31 no limite de baixo. Próximo da ordem: bases das ações e chance por zona.
+   - Escala de chance testada com `--testar`, sem aplicar (`GDD.escalaZona`, com peso do elenco 1,5, 5.000 jogos), valores 0,72 (atual) / 0,76 / 0,80 / 0,84: gols 2,31 / 2,42 / 2,53 / 2,65 (2,3 a 2,7); 0 a 0 11,5 / 10,3 / 9,7 / 8,7% (6 a 10); dois Blocos Baixos 1,54 / 1,61 / 1,67 / 1,75 gols (1,0 a 1,6); dois de Risco alto 2,27 / 2,39 / 2,49 / 2,61 (3,2 a 4,0); plano certo 16,9 / 16,8 / 16,9 / 17,2% (22 a 28); neutro ou ruim 12,0 / 11,8 / 11,6 / 11,7%; times iguais, casa 45,2 / 45,8 / 46,2 / 46,7%; 12 estilos, maior vantagem +4,5 / +4,1 / +4,4 / +4,0.
+   - **`escalaZona` 0,72 → 0,80 aplicado com aprovação do Gustavo em 09/11/2026** (`motor/parametros.ts`, calibração em vigor no GDD 9; Perigo da dividida decisiva 20 → 22). Medido na coluna 0,80 acima. Fora da faixa: dois Blocos Baixos 1,67 gols, dois de Risco alto 2,49, plano certo 16,9%. Próximo da ordem: limites de eixos e viabilidade (seção 5), para o peso do plano.
+   - Limites de eixo testados com `--testar`, sem aplicar (5.000 jogos): `eixoMax` 8, 10 e 12 com `somaMax` 10, e 12 com `somaMax` 18. **Nenhum efeito:** plano certo 16,9% e neutro ou ruim 11,6% nos quatro; gols 2,52; 12 estilos +4,4 (+4,3 com 12/18). O teto quase nunca é atingido, porque os eixos valem diferença de médias × nota/20; subir limite não dá peso ao plano. No plano certo, a soma dos eixos ainda é negativa (−3,95, contra −5,36 no neutro).
+   - Multiplicador no total de `pontosConfronto` (eixos e viabilidade, limite da soma junto) testado numa cópia fora do projeto, sem aplicar (5.000 jogos), ×1 (atual) / ×2 / ×3 / ×4: plano certo 16,9 / 15,9 / 15,3 / 15,0%; neutro ou ruim 11,6 / 10,4 / 8,7 / 6,8%; gols 2,53 / 2,58 / 2,66 / 2,76; 0 a 0 9,7 / 10,2 / 8,5 / 8,4%; dois Blocos Baixos 1,67 / 1,73 / 1,81 / 1,88; dois de Risco alto 2,49 / 2,58 / 2,64 / 2,72; 12 estilos +4,4 / +4,4 / +5,4 / +5,6. **Piora a zebra:** como a soma dos eixos do fraco é negativa até no plano certo, multiplicar amplia a desvantagem. Os eixos comparam atributo absoluto e repetem o peso do elenco.
+   - Eixos relativos testados na cópia, sem aplicar (5.000 jogos): o peso de cada eixo passa a ser a nota do estilo menos a média dessa nota nos 12 estilos (Pressão e Verticalidade do agressor; no eixo Criação × Bloco, média de Bloco menos o Bloco do alvo). Os grupos de atributo não dependem do estilo, então isso equivale ao eixo menos a média dos 12 estilos. Soma dos eixos: neutro −0,21, certo +1,50 (104 planos certos, antes 167). Com multiplicador no total do confronto ×1 / ×2 / ×3: plano certo 19,8 / 21,3 / **22,8%** (22 a 28); neutro ou ruim 14,7 / 13,3 / 14,2% (10 a 15); gols 2,44 / 2,46 / 2,45; 0 a 0 9,6 / 9,8 / 10,1%; dois Blocos Baixos 1,59 / 1,60 / 1,58 (dentro); dois de Risco alto 2,45 / 2,40 / 2,44; times iguais, casa 46,4 / 45,7 / 45,9%; 12 estilos +5,1 / +4,7 / +5,1. Com ×3 só Risco alto fica fora (0 a 0 por 0,1, no ruído).
+   - **Eixos relativos e peso do confronto 3 aplicados com aprovação do Gustavo em 09/11/2026** (`motor/confronto.ts`, `GDD.confronto.peso`; GDD 5 atualizado: pesos relativos, "Limite e peso" e exemplo). Rodada completa de 5.000 jogos no projeto, igual à cópia: gols 2,45; 0 a 0 10,1% (acima por 0,1); finalizações 24,0; contra-ataques 10,45; escanteios 8,47; times iguais 45,9/28,2/25,9; zebra 14,2% neutro ou ruim e **22,8% plano certo**; dois Blocos Baixos 1,58; dois de Risco alto 2,44 (fora); 12 estilos +5,1. Pendentes: definição de Risco alto e critério de "elenco compatível".
+   - **Definição aprovada pelo Gustavo em 09/11/2026:** "Risco alto" no GDD 9 = estilo com nota de Risco 15 ou mais (Pressão Pós-Perda, Encaixe Individual, Jogo Apoiado), como o script já fazia. Meta de 3,6 gols segue fora (2,44).
+   - Brecha por nota de Risco testada numa cópia, sem aplicar (5.000 jogos): soma (Risco − 10) × valor à brecha da própria defesa em todas as zonas, teto de 15 por zona. Atual / só na transição × 2 / transição × 3 / o tempo todo × 1: dois de Risco alto 2,44 / 2,56 / 2,63 / 2,79 gols (3,2 a 4,0); gols da liga 2,45 / 2,56 / 2,56 / 2,64; 0 a 0 10,1 / 9,0 / 9,1 / 8,6%; zebra neutro ou ruim 14,2 / **15,2 / 15,5 / 15,8%** (10 a 15, sai da faixa); plano certo 22,8 / 23,5 / 23,7 / 24,0%; 12 estilos +5,1 / +6,6 / +6,0 / +6,1. Ganho de no máximo +0,35 gol, e a zebra neutra já passa do teto: não fecha a meta sem desmontar outras.
+   - Espelho com a calibração atual (2.000 jogos por estilo), gols / contra-ataques: Posse Posicional 1,52 / 4,2; Pressão Pós-Perda 2,72 / 20,8; Contra-Ataque 2,77 / 0,1; Bloco Baixo 1,62 / 0,9; Jogo Direto 2,46 / 0,3; Jogo pelas Pontas 1,94 / 7,7; Ginga 2,14 / 8,4; Equilíbrio 2,15 / 1,5; Encaixe Individual 2,74 / 18,2; Jogo Apoiado 1,89 / 21,7; Transição Vertical 3,43 / 7,1; Bola Parada 1,97 / 0,0. Nenhum grupo chega a 3,6 gols; só Transição Vertical passa de 3,2. O que o Risco 15+ separa é o contra-ataque (18 a 22 por jogo, liga 10), e não o gol: Jogo Apoiado tem Risco 15 e 1,89 gol. Meta de dois de Risco alto em revisão pelo Gustavo.
+   - **Meta revista pelo Gustavo em 09/11/2026:** dois de Risco alto, gols por jogo 3,6 (3,2 a 4,0) → **2,7 (2,4 a 3,0)** (GDD 9 e `terminal/cenarios.ts`). Medido hoje: 2,44, dentro por 0,04, no ruído. Com isso, na rodada de 5.000 jogos só o 0 a 0 fica fora (10,1%, por 0,1). Pendente: critério de "elenco compatível".
+   - **Elenco compatível redefinido pelo Gustavo em 09/11/2026:** os 20 clubes de maior viabilidade em cada estilo (antes viabilidade 0 ou mais, que deixava de 2 a 70 clubes; GDD 9, `CLUBES_COMPATIVEIS` em `terminal/cenarios.ts`). 12 estilos, 2.000 jogos cada, média 46,3%: maior vantagem +4,6 (Pressão Pós-Perda; limite 8, dentro); de +3,7 (Transição Vertical) a −7,1 (Encaixe Individual). O GDD 9 só limita a vantagem; Encaixe Individual 7 pontos abaixo da média fica como observação.
+   - **Calibração do motor fechada pelo Gustavo em 09/11/2026.** Única meta fora: 0 a 0 10,1% (teto 10, no ruído), aceita como está. Etapa 3 não iniciada.
+3. Temporada e competições ✅ (concluída em 13/11/2026; terminal, IA nos dois lados; **4 fatias aprovadas pelo Gustavo**: 1ª calendário de 52 semanas e as 5 ligas de pontos corridos com classificação; 2ª memória entre jogos: suspensões, lesões com dias fora, energia por tipo de ciclo, auxiliar escala; 3ª copas: Copa do Brasil, Libertadores com sorteio, ida e volta e pênaltis, Champions e Mundial; 4ª virada do ano: vagas, acesso e queda, adaptação do técnico da IA)
+   - Desempate nas ligas (Gustavo, 09/11/2026): pontos, vitórias, saldo, gols pró, confronto direto, menos vermelhos, menos amarelos, sorteio.
+   - Champions (Gustavo, 09/11/2026): motor completo sem narração, semente própria, como os outros jogos da rodada.
+   - 1ª fatia **aprovada pelo Gustavo em 13/11/2026** (`codigo/temporada/`: `calendario.ts`, `classificacao.ts`, `temporada.ts`; comando `npm run temporada -- [SEMENTE] [LIGA] [rodadas]`). 740 jogos em cerca de 3 s, cada um com semente própria; sem memória entre jogos (2ª fatia).
+   - Escolhas da fatia, a confirmar (`CALENDARIO`, PROVISORIO): semanas livres da Série A 11, 18, 25, 32, 40 e 48 (termina na 47); Série B e sul-americanas nas semanas 5, 7, ..., 39; liga no domingo, copa na quarta; ordem dos clubes na tabela sorteada pela semente; returno espelha o turno com mando invertido; ninguém joga 3 seguidas em casa ou fora; confronto direto entre 3 ou mais empatados = pontos nos jogos entre eles.
+   - Medição em 20 temporadas (média de pontos): Série A campeão 83,1, vice 78,3, lanterna 12,7, 2,48 gols, 0 a 0 10,5%, 9 campeões diferentes; Série B 41,4/35,9/9,9; Argentina 40,2/35,2/12,3 (2 campeões); Colômbia 40,2/36,9/7,2; Chile 48,2/42,1/9,3 (Toqui 15 de 20). Observação, sem meta no GDD: lanterna da Série A muito baixo e Argentina e Chile com pouca alternância.
+   - Decisões da 2ª fatia (Gustavo, 13/11/2026): auxiliar poupa o titular com condição abaixo de 70 se houver reserva da posição (PROVISORIO); médico e preparador com valor neutro (atributos 10) até a Gestão; amarelos do jogo em que o jogador foi expulso não contam, e o contador desconta 3 ao gerar a suspensão.
+   - 2ª fatia construída e **aprovada pelo Gustavo em 13/11/2026** (`temporada/memoria.ts`; motor aceita `condicao` e `poupados` em `EntradaTime`). Condição = energia final + recuperação do ciclo (GDD-gestao 2, IA com carga Leve no Curto e Normal nos demais), ritmo de jogo 90 após 4 ciclos sem jogar; lesão do motor e do treino com dias fora (× idade), volta com 70, recaída nas 4 semanas, marcas da grave (Propensão +1, sequela 20%); suspensões por competição (GDD-motor 8).
+   - Escolhas da fatia, a confirmar (`ENTRE_JOGOS`, PROVISORIO): condição 100 no 1º jogo (60 + 4 ciclos de pré-temporada, amistosos tiram o limite); lesão no treino começa no dia seguinte ao último jogo; sem goleiro disponível, joga o que volta antes (não aconteceu em 20 temporadas); técnico expulso não pega suspensão (GDD não define); moral da lesão fica para a Gestão; a sequela não recalcula a nota do jogador.
+   - Medição em 20 temporadas, só ligas: Série A lesionados 0,74 e suspensos 0,70 por clube por jogo, poupados 0,09, condição dos titulares 96,8; outras ligas cerca de 0,4 lesionado e 0,5 a 0,6 suspenso. Tabela quase igual à 1ª fatia (Série A 82,7/77,8/11,7, 2,49 gols). Meta de desfalques por lesão (2, de 1,5 a 3) é "Série A com copas": medir na 3ª fatia.
+   - **Ano 1 das copas (Gustavo, 13/11/2026): equivalentes da Libertadores real de 2026**, 4 por país (`ANO1` em `temporada/copas.ts`). Brasil pela regra do jogo aplicada a 2025: Guanabara (Libertadores), Leste Paulista (Copa do Brasil), Garibaldi e Alterosa (liga). Argentina: Riachuelo, Diagonal, Barranca (fase de grupos) e Saavedra (maior reputação, sem outro equivalente). Colômbia: Nutibara, Combeima, Monserrate, Barlovento. Chile: Herradura, Manquehue (grupos), Cachapoal, Altohorno (fases prévias). Folgam na 1ª fase da Copa do Brasil: Guanabara e Leste Paulista.
+   - 3ª fatia construída e **aprovada pelo Gustavo em 13/11/2026** (`temporada/copas.ts`, `motor/penaltis.ts`; motor aceita `neutro`). Copa do Brasil, Libertadores (grupos com 1 por país, mata-mata, melhor campanha decide em casa), Champions só simulada (motor sem narração), Mundial em campo neutro; disputa de pênaltis do GDD 8; desempate por saldo agregado e pênaltis.
+   - Escolhas da fatia, a confirmar (PROVISORIO; o Gustavo não respondeu as 2 perguntas, foi aplicada a recomendação): jogo único com mando sorteado e final da Champions e Mundial em campo neutro; chave da Libertadores cruzada fixa (1ºA × 2ºB, 1ºB × 2ºA, 1ºC × 2ºD, 1ºD × 2ºC) e semis pela chave; datas `DATAS_COPAS` (Copa do Brasil 7, 21/23, 31/33, 37/39, 44/45; Libertadores grupos 8 a 18 nas pares, 25/27, 34/36, 41/43; Champions 20, 30, 38, 46; Mundial 48), nenhum clube com 2 copas na mesma semana; desempate dos grupos igual ao das ligas; melhor campanha = pontos, vitórias, saldo, gols pró; na Copa do Brasil sorteio livre a cada fase; batedores da disputa por média de BP e Comp, goleiro por último; Cobrador de pênalti também vale +2 na disputa; nos grupos de 4 a regra de 3 seguidas em casa vale só dentro do turno.
+   - Medição em 20 temporadas com copas: 862 jogos por temporada; clube da Série A joga até 60; mata-mata nos pênaltis 20,8%; Mundial 11 a 9 para a Libertadores. **Fora da meta:** lesionados ao mesmo tempo na Série A com copas 0,96 (meta 2, de 1,5 a 3; GDD-gestao 12), para o `simulador-balanceamento`. Suspensos 0,67, poupados 0,10, condição dos titulares 96,6.
+   - Decisões da 4ª fatia (Gustavo, 13/11/2026): virada já com reputação e torcida (Humor neutro até a Gestão); adaptação testada IA contra IA em todo confronto repetido; na virada os amarelos zeram e a suspensão fica para o ano seguinte.
+   - 4ª fatia construída em 13/11/2026 (`temporada/virada.ts`, `temporada/adaptacao.ts`; comando `npm run carreira -- [ANOS] [SEMENTE] [sem-adaptacao]`), **aprovada pelo Gustavo em 13/11/2026, com a adaptação como está. Etapa 3 concluída.** Virada nos passos 1, 3, 4, 5 (só reputação e torcida) e 9 do GDD-gestao 11: campeões, 4 trocam entre Série A e B, vagas da Libertadores pela prioridade, folgas da Copa do Brasil (campeão da Série A e da copa; se o mesmo, o vice), reputação (+1 título, −1 queda, −1 a cada 3 anos sem Libertadores se 15+) e torcida (título +2, Libertadores +1, queda −2, ±1 de tamanho a cada 5 pontos). Lesões atravessam o ano; quem está bem começa com 100.
+   - Escolhas da fatia, a confirmar (PROVISORIO): título da Série B, Champions e Mundial também contam; torcida soma +2 por título; Libertadores = ter jogado a do ano; artilheiros ficam de fora; adaptação parte do padrão do estilo e vale para o último jogo contra o mesmo adversário, em qualquer competição e de um ano para o outro; Leitura Tática +2 por repetição do plano do adversário, até 20; Calculista: brecha na transição pede saída mais direta, posicional pede ritmo mais lento; Conservador reduz Risco baixando linha e pressão; Teimoso sobe a linha.
+   - Medição: 20 temporadas em 57 s (17.240 jogos). Adaptação em 5 temporadas, com e sem: vencedor repetido no 2º jogo 42,6% → 42,0%, quem perdeu o 1º não perdeu o 2º 51,6% → 51,8%, gols 2,39 nos dois; **efeito quase nulo** (os dois lados se adaptam, 1 degrau mexe pouco e a leitura certa chega a 97,7%, porque a IA nunca muda de plano). Riachuelo ganhou 17 de 20 Argentinas, Toqui 12 de 20 Chilenos: sem evolução e envelhecimento (etapa 4) os elencos não mudam.
+4. Gestão
+5. Profundidade (eventos, base, neblina, 2D)
+6. Publicação e monetização
+
+## Em aberto
+- Recurso de compartilhar táticas por código (importar/exportar)
+- Nome do jogo
+- Marcação individual escolhida pelo jogador (pedido do Gustavo, 13/11/2026): ordem para um jogador perseguir um adversário específico, com vantagem sobre o alvo e brechas na zona que ele deixa. Não existe no GDD; detalhar depois da 2ª fatia da etapa 3.

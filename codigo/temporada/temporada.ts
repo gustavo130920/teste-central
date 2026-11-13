@@ -1,0 +1,129 @@
+// Temporada (etapa 3): 5 ligas de pontos corridos e as copas. Cada jogo roda com o motor completo e semente própria.
+// Memória entre jogos (condição, lesões, suspensões, rodízio) em memoria.ts; copas em copas.ts.
+import type { Jogador, Tatica } from '../motor/dados.ts';
+import { simularPartida } from '../motor/partida.ts';
+import { disputarPenaltis } from '../motor/penaltis.ts';
+import { criarRng, semearDeTexto } from '../motor/rng.ts';
+import type { EntradaTime } from '../motor/tipos.ts';
+import type { Jogo } from './calendario.ts';
+import { jogosDaLiga } from './calendario.ts';
+import type { Linha, ResultadoJogo } from './classificacao.ts';
+import { classificar } from './classificacao.ts';
+import type { Copa, JogoCopa } from './copas.ts';
+import { ANO1, criarChampions, criarCopaDoBrasil, criarLibertadores, criarMundial } from './copas.ts';
+import { adaptar, lerJogo } from './adaptacao.ts';
+import type { Desfalques, Memoria } from './memoria.ts';
+import { criarMemoria, prepararJogo, registrarJogo } from './memoria.ts';
+
+export const LIGAS = ['serie-a', 'serie-b', 'argentina', 'colombia', 'chile'] as const;
+
+export interface JogoDisputado extends Jogo, ResultadoJogo {
+  semente: number;
+  desfalques: [Desfalques, Desfalques];
+  /** Condição média dos 11 que começaram. */
+  condicaoTitulares: [number, number];
+  fase?: string;
+  perna?: 0 | 1 | 2;
+  neutro?: boolean;
+  penaltis?: [number, number] | null;
+  /** Quem chegou com o padrão ajustado pela adaptação. */
+  adaptou: [boolean, boolean];
+}
+
+export interface Temporada {
+  semente: number;
+  jogos: JogoDisputado[];
+  tabelas: Record<string, Linha[]>;
+  copas: Copa[];
+  memoria: Memoria;
+}
+
+export interface EntradaTemporada {
+  semente: number;
+  /** Clubes de cada liga. */
+  clubesPorLiga: Record<string, string[]>;
+  /** Clubes europeus (só Champions e Mundial). Sem eles, a temporada roda só as ligas. */
+  europeus?: string[];
+  /** Clube e técnico de cada clube; o elenco vem de `elencos` e passa pela memória. */
+  entradas: Record<string, EntradaTime>;
+  elencos: Record<string, Jogador[]>;
+  tatica: Tatica;
+  /** Chamado depois de cada jogo (para mostrar progresso). */
+  aoJogar?: (j: JogoDisputado) => void;
+  /** Da 2ª temporada em diante (virada.ts): vagas, folgas e a memória do ano anterior. Sem eles, vale o ano 1. */
+  libertadores?: string[][];
+  folgasCopaDoBrasil?: string[];
+  memoria?: Memoria;
+  /** Adaptação do técnico da IA entre jogos (padrão: ligada). */
+  adaptacao?: boolean;
+}
+
+export function simularTemporada(e: EntradaTemporada): Temporada {
+  const ligas = Object.keys(e.clubesPorLiga);
+  const rngDe = (s: string) => criarRng(semearDeTexto(`${e.semente}-${s}`));
+  const dasLigas = ligas.flatMap((liga) => jogosDaLiga(liga, e.clubesPorLiga[liga], rngDe(`tabela-${liga}`)));
+  const memoria = e.memoria ?? criarMemoria(e.elencos, [...ligas.flatMap((l) => e.clubesPorLiga[l]), ...(e.europeus ?? [])]);
+
+  const copas: Copa[] = [];
+  if (e.europeus) {
+    const brasileiros = [...(e.clubesPorLiga['serie-a'] ?? []), ...(e.clubesPorLiga['serie-b'] ?? [])];
+    const lib = ANO1.libertadores;
+    const vagas = e.libertadores ?? [lib.brasil, lib.argentina, lib.colombia, lib.chile];
+    const libertadores = criarLibertadores(vagas, rngDe('sorteio-libertadores'), () => rngDe('desempate-libertadores'));
+    const champions = criarChampions(e.europeus, rngDe('sorteio-champions'));
+    copas.push(criarCopaDoBrasil(brasileiros, e.folgasCopaDoBrasil ?? ANO1.folgasCopaDoBrasil), libertadores, champions, criarMundial(libertadores, champions));
+  }
+
+  const jogos: JogoDisputado[] = [];
+  const ultimoDia = Math.max(...dasLigas.map((j) => j.dia), 52 * 7);
+  for (let dia = 1; dia <= ultimoDia; dia++) {
+    const doDia: (Jogo | JogoCopa)[] = dasLigas.filter((j) => j.dia === dia);
+    for (const c of copas) doDia.push(...c.jogosDoDia(dia, rngDe(`${c.id}-${dia}`)));
+    for (const j of doDia) {
+      const copa = copas.find((c) => c.id === j.competicao);
+      const jc = copa ? (j as JogoCopa) : null;
+      const semente = semearDeTexto(`${e.semente}-${j.competicao}-${j.dia}-${j.mandante}-${j.visitante}`);
+      const rngMem = criarRng(semearDeTexto(`${semente}-memoria`));
+      const lados = [j.mandante, j.visitante] as const;
+      const prep = lados.map((c) => prepararJogo(memoria, c, j.dia, j.competicao, rngMem));
+      const padrao = lados.map((c, k) => {
+        const leitura = memoria.leituras.get(`${c}>${lados[1 - k]}`);
+        if (e.adaptacao === false || !leitura) return undefined;
+        const ent = e.entradas[c];
+        const estilo = e.tatica.estilos.find((s) => s.nome === ent.tecnico.estilo)!;
+        const aj = adaptar(ent.tecnico, estilo, leitura, rngMem);
+        if (aj.leu === true) memoria.contagem.leiturasCertas += 1;
+        if (aj.leu === false) memoria.contagem.leiturasErradas += 1;
+        if (!aj.mudancas.length) return undefined;
+        memoria.contagem.adaptacoes += 1;
+        return aj.padrao;
+      });
+      const entrada = (k: 0 | 1): EntradaTime => ({ ...e.entradas[lados[k]], elenco: prep[k].elenco, condicao: prep[k].condicao, poupados: prep[k].poupados, padrao: padrao[k] ?? e.entradas[lados[k]].padrao });
+      const r = simularPartida({ mandante: entrada(0), visitante: entrada(1), tatica: e.tatica, semente, neutro: jc?.neutro });
+      const [x, y] = r.estatisticas;
+      const titulares = (k: 0 | 1): number => {
+        const ids = r.times[k].participantes.slice(0, 11).map((p) => p.j.id);
+        return ids.reduce((s, id) => s + (prep[k].condicao[id] ?? 100), 0) / ids.length;
+      };
+      const res: ResultadoJogo = { mandante: j.mandante, visitante: j.visitante, placar: r.placar, amarelos: [x.amarelos, y.amarelos], vermelhos: [x.vermelhos, y.vermelhos] };
+      const penaltis = copa && jc && copa.precisaPenaltis(jc, r.placar) ? disputarPenaltis(r.times, criarRng(semearDeTexto(`${semente}-penaltis`))).placar : null;
+      const d: JogoDisputado = {
+        adaptou: [!!padrao[0], !!padrao[1]],
+        ...j, ...res, semente, desfalques: [prep[0].desfalques, prep[1].desfalques], condicaoTitulares: [titulares(0), titulares(1)],
+        ...(jc ? { fase: jc.fase, perna: jc.perna, neutro: jc.neutro, penaltis } : {}),
+      };
+      for (const k of [0, 1] as const) {
+        const chave = `${lados[k]}>${lados[1 - k]}`;
+        memoria.leituras.set(chave, lerJogo(r, k, memoria.leituras.get(chave)));
+      }
+      for (const k of [0, 1] as const) registrarJogo(memoria, lados[k], k, r, j.dia, j.competicao, prep[k].desfalques.suspensos, rngMem);
+      if (copa && jc) copa.registrar(jc, res, penaltis);
+      jogos.push(d);
+      e.aoJogar?.(d);
+    }
+  }
+
+  const tabelas: Record<string, Linha[]> = {};
+  for (const liga of ligas) tabelas[liga] = classificar(e.clubesPorLiga[liga], jogos.filter((j) => j.competicao === liga), rngDe(`sorteio-${liga}`));
+  return { semente: e.semente, jogos, tabelas, copas, memoria };
+}

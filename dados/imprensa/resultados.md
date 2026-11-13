@@ -1,0 +1,36 @@
+# Imprensa: resultados
+
+Data: 09/11/2026 · 30 itens
+
+| ID | Assunto | Repórter | Contexto | Cred. | Humor | Confiança | Manchete | Texto |
+|---|---|---|---|---|---|---|---|---|
+| RES-001 | Vitória | Redação | Sempre | Alta | +P | 0 | {clube} vence o {adversario} por {placar} | O {clube} bateu o {adversario} por {placar}, pela {competicao}, e aparece em {posicao}º lugar. |
+| RES-002 | Vitória | Setorista | Sempre | Alta | +P | +P | Vestiário leve depois da vitória sobre o {adversario} | Segundo pessoas do departamento de futebol, o elenco saiu satisfeito com o {placar}. A comissão mantém a programação de treinos. |
+| RES-003 | Vitória | Analista tático | Estilo Contra-Ataque | Alta | +P | +P | Contra-ataque decide, e {tecnico} acerta na leitura | Jogar em transição tirou o {adversario} do conforto. O espaço nas costas dos laterais rendeu as melhores chances do {placar}. |
+| RES-004 | Vitória | Comentarista torcedor | Jogo casa | Média | +M | 0 | Casa cheia, time ligado: a gente saiu rouco! | A gente empurrou do começo ao fim, e o time respondeu. Com esse {placar} em casa, dá gosto subir a rampa do estádio. |
+| RES-005 | Vitória | Sensacionalista | Fase ruim | Baixa | +P | 0 | ALÍVIO! Vitória salva o pescoço de {tecnico}! | Por pouco! Sem o {placar} sobre o {adversario}, o clima de guerra ia explodir no {clube}. A bomba foi só adiada! |
+| RES-006 | Empate | Redação | Sempre | Alta | 0 | 0 | {clube} e {adversario} ficam no {placar} | Em jogo pela {competicao}, {clube} e {adversario} empataram em {placar}. O {clube} está em {posicao}º lugar. |
+| RES-007 | Empate | Analista tático | Sempre | Alta | 0 | -P | Empate mostra um meio-campo sem saída | Faltou opção de passe entre as linhas. A escolha de {tecnico} deu segurança atrás, mas deixou o ataque isolado no {placar}. |
+| RES-008 | Empate | Comentarista torcedor | Jogo casa | Média | -P | 0 | Empatar em casa não dá, gente! | A gente pagou ingresso para ver o time ir para cima e saiu com {placar}. Em casa, contra o {adversario}, tinha que ganhar. |
+| RES-009 | Derrota | Redação | Sempre | Alta | -P | -P | {clube} perde para o {adversario} por {placar} | O {clube} foi derrotado pelo {adversario} por {placar}, pela {competicao}, e aparece em {posicao}º lugar. |
+| RES-010 | Derrota | Setorista | Sempre | Alta | -P | -P | Cobrança no vestiário após derrota para o {adversario} | Dirigentes foram ao vestiário depois do {placar}, segundo duas fontes do clube. A conversa foi curta, e não houve anúncio de mudança. |
+| RES-011 | Derrota | Sensacionalista | Sempre | Baixa | -M | -P | CRISE À VISTA! Derrota deixa {clube} em clima de guerra! | Bomba! Depois do {placar}, tem jogador sem falar com jogador no {clube}. O ambiente ferveu, e {tecnico} está por um fio! |
+| RES-012 | Derrota | Analista tático | Estilo Posse Posicional | Alta | -P | -P | Muita posse e pouco perigo na derrota do {clube} | O time tocou a bola, mas não entrou na área. A pressão do {adversario} encontrou a saída curta de {tecnico} sempre pelo mesmo lado. |
+| RES-013 | Derrota | Comentarista torcedor | Fase ruim | Média | -M | 0 | Cansei de sair calado do estádio | A gente cobra porque ama. Mais um {placar} contra, e não vi vontade em campo. Desse jeito, a arquibancada vai perder a paciência. |
+| RES-014 | Goleada | Redação | Sempre | Alta | +M | +P | {clube} atropela o {adversario}: {placar} | Placar elástico pela {competicao}: o {clube} goleou o {adversario} por {placar} e foi para {posicao}º lugar. |
+| RES-015 | Goleada | Comentarista torcedor | Sempre | Média | +M | 0 | Que baile, minha gente! | A gente cantou até perder a voz. Foi {placar} no {adversario}, e teve torcedor comemorando até o dia clarear. |
+| RES-016 | Goleada | Redação | Resultado goleado | Alta | -M | -M | Goleada: {clube} leva {placar} do {adversario} | O {clube} foi goleado pelo {adversario}, por {placar}, em jogo da {competicao}. O time segue em {posicao}º lugar. |
+| RES-017 | Goleada | Sensacionalista | Resultado goleado | Baixa | -M | -P | VEXAME HISTÓRICO! {placar} envergonha o {clube}! | Clima de guerra! O {placar} foi a gota d'água, e a bomba vai cair na cabeça de {tecnico}! Ninguém segura mais! |
+| RES-018 | Clássico | Redação | Sempre | Alta | 0 | 0 | Clássico termina em {placar} | {clube} e {adversario} fizeram um clássico disputado pela {competicao}. O placar final foi {placar}. |
+| RES-019 | Clássico | Setorista | Sempre | Alta | 0 | 0 | Clássico deixa elenco desgastado para a próxima rodada | A comissão vai reduzir a carga nos próximos treinos, segundo o departamento físico. Alguns titulares devem fazer trabalho separado. |
+| RES-020 | Clássico | Comentarista torcedor | Jogo clássico, Resultado vitória | Média | +M | +P | Hoje a cidade é nossa, e o {rival} que aguente! | A gente esperou a semana inteira por isso. Ganhar do {rival} por {placar} não tem preço; amanhã ninguém tira a camisa. |
+| RES-021 | Clássico | Sensacionalista | Jogo clássico, Resultado derrota | Baixa | -M | -P | HUMILHAÇÃO! {rival} faz a festa em cima do {clube}! | Bomba na cidade! O {placar} para o {rival} deixou a torcida em fúria, e há quem diga que {tecnico} não chega à próxima rodada! |
+| RES-022 | Título ou acesso | Redação | Sempre | Alta | +G | +G | Missão cumprida: {clube} faz história na {competicao} | O {clube} garantiu seu maior objetivo na {competicao}. O elenco comandado por {tecnico} encerra a campanha sob festa da torcida. |
+| RES-023 | Título ou acesso | Setorista | Sempre | Alta | +G | +G | Diretoria prepara prêmio ao elenco após a conquista | Fontes da diretoria confirmam premiação para elenco e comissão. O valor não foi divulgado, e a cúpula do clube deve falar nesta semana. |
+| RES-024 | Título ou acesso | Comentarista torcedor | Briga título | Média | +G | +P | Campeão! Pode chorar, que hoje é permitido | A gente sofreu a temporada inteira para viver isso. Obrigado, {clube}: esse título é de quem nunca deixou de ir ao estádio. |
+| RES-025 | Rebaixamento | Redação | Sempre | Alta | -G | -G | {clube} é rebaixado na {competicao} | Com o resultado de {placar}, o {clube} não tem mais chances de permanecer e vai disputar a divisão inferior na próxima temporada. |
+| RES-026 | Rebaixamento | Sensacionalista | Sempre | Baixa | -M | -M | QUEDA! O fim da linha para o {clube}! | Bomba! O rebaixamento abriu um clima de guerra nos corredores, e já falam em debandada geral do elenco! |
+| RES-027 | Rebaixamento | Analista tático | Briga rebaixamento | Alta | -M | -P | Zona de risco: {clube} precisa mudar o plano | Em {posicao}º lugar, o time sofre nas costas da defesa. O estilo {estilo}, escolhido por {tecnico}, pede uma marcação que o elenco não entrega. |
+| RES-028 | Sequência | Redação | Sempre | Alta | 0 | 0 | {clube} chega a {sequencia} | Com o {placar} diante do {adversario}, o {clube} chegou a {sequencia} na {competicao}. |
+| RES-029 | Sequência | Setorista | Sempre | Alta | 0 | 0 | Rotina do {clube} muda após {sequencia} | Segundo a comissão, a carga de treinos será revista depois de {sequencia}. A decisão foi tomada por {tecnico} na reapresentação. |
+| RES-030 | Sequência | Analista tático | Fase boa | Alta | +P | +P | Por que o {clube} não para de pontuar | {tecnico} mantém o estilo {estilo} e a mesma base. A marca de {sequencia} se explica pela compactação entre as linhas. |

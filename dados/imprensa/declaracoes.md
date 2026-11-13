@@ -1,0 +1,26 @@
+# Imprensa: declaracoes
+
+Data: 09/11/2026 · 20 itens
+
+| ID | Assunto | Repórter | Contexto | Cred. | Humor | Confiança | Manchete | Texto |
+|---|---|---|---|---|---|---|---|---|
+| DEC-001 | Repercussão da coletiva | Redação | Sempre | Alta | 0 | 0 | {tecnico} fala à imprensa após o jogo contra o {adversario} | Em entrevista coletiva, {tecnico} comentou o {placar} e a preparação do {clube} para a sequência da {competicao}. |
+| DEC-002 | Repercussão da coletiva | Setorista | Sempre | Alta | 0 | 0 | Coletiva de {tecnico} é assunto nos corredores do clube | Segundo pessoas do departamento de futebol, as palavras de {tecnico} foram discutidas com o elenco na reapresentação. |
+| DEC-003 | Repercussão da coletiva | Comentarista torcedor | Tom Blindar | Média | +P | 0 | {tecnico} fechou com o grupo, e a gente respeita | A gente viu {tecnico} chamar a responsabilidade e proteger os jogadores. Agora o elenco tem que retribuir em campo. |
+| DEC-004 | Repercussão da coletiva | Sensacionalista | Tom Cobrar | Baixa | -P | -P | ESCULACHO! {tecnico} detona o elenco em público! | Bomba! {tecnico} jogou o grupo na fogueira, e tem jogador do {clube} prometendo não deixar barato! Clima de guerra! |
+| DEC-005 | Repercussão da coletiva | Setorista | Tom Humildade | Alta | +P | +P | {tecnico} admite erros e promete corrigir a rota | A autocrítica foi bem recebida pela diretoria, segundo duas fontes do clube. O discurso repercutiu também no vestiário. |
+| DEC-006 | Repercussão da coletiva | Analista tático | Tom Cobrar | Alta | 0 | +P | Cobrança de {tecnico} mira o posicionamento do time | Ao falar em desatenção, {tecnico} apontou o problema real: o time demora a recompor quando perde a bola no meio. |
+| DEC-007 | Repercussão da coletiva | Analista tático | Tom Humildade | Alta | 0 | +P | Autocrítica de {tecnico} abre espaço para mudança tática | Ao admitir o erro na escolha, {tecnico} sinaliza ajuste. O estilo {estilo} pode ganhar outra cara no próximo jogo. |
+| DEC-008 | Provocação | Redação | Sempre | Alta | 0 | 0 | {tecnico} provoca o {adversario} em entrevista | Às vésperas do confronto pela {competicao}, {tecnico} fez declarações em tom provocativo sobre o {adversario}. |
+| DEC-009 | Provocação | Sensacionalista | Sempre | Baixa | +P | -P | FOGO NO PARQUINHO! {tecnico} mexe com o {adversario}! | Bomba! {tecnico} cutucou o {adversario}, e dizem que a frase já está colada no mural do vestiário deles! Vem guerra! |
+| DEC-010 | Provocação | Comentarista torcedor | Jogo clássico | Média | +M | 0 | É assim que se fala do {rival}! | A gente queria ouvir isso há tempos. {tecnico} mexeu com o {rival} e agora tem que ganhar, senão a conta vem em dobro. |
+| DEC-011 | Provocação | Analista tático | Jogo clássico | Alta | 0 | -P | Provocação dá combustível ao {rival} | Em clássico, frase de efeito vira motivação do outro lado. O {rival} deve entrar mais agressivo na pressão, e o {clube} precisa estar pronto. |
+| DEC-012 | Resposta do técnico rival | Redação | Sempre | Alta | 0 | 0 | {tecnico_rival} comenta declarações de {tecnico} | Questionado em entrevista, {tecnico_rival} respondeu às declarações de {tecnico} antes do confronto pela {competicao}. |
+| DEC-013 | Resposta do técnico rival | Setorista | Sempre | Alta | 0 | 0 | Clima frio entre as comissões antes do jogo | Segundo pessoas do clube, as comissões do {clube} e do {adversario} não devem se cumprimentar antes da partida. |
+| DEC-014 | Resposta do técnico rival | Sensacionalista | Imprensa polêmico | Baixa | -P | 0 | TRETA! {tecnico_rival} solta os cachorros em {tecnico}! | Bomba! {tecnico_rival} disse que {tecnico} fala demais e ganha de menos! O próximo confronto virou questão de honra! |
+| DEC-015 | Resposta do técnico rival | Comentarista torcedor | Imprensa polêmico | Média | +P | -P | {tecnico_rival} falou demais, e a gente vai cobrar | A gente anotou cada palavra de {tecnico_rival}. No dia do jogo, o estádio vai lembrar, e o time tem que responder em campo. |
+| DEC-016 | Resposta do técnico rival | Redação | Imprensa discreto | Alta | 0 | 0 | {tecnico_rival} evita polêmica e fala só do próprio time | Em tom calmo, {tecnico_rival} preferiu não comentar as declarações e disse que o {adversario} está focado na preparação. |
+| DEC-017 | Crítica à arbitragem | Redação | Sempre | Alta | 0 | -P | {tecnico} critica a arbitragem após o {placar} | Em entrevista, {tecnico} reclamou das decisões da arbitragem no jogo contra o {adversario}, pela {competicao}. |
+| DEC-018 | Crítica à arbitragem | Setorista | Sempre | Alta | 0 | -P | Diretoria não gostou da fala de {tecnico} sobre a arbitragem | Segundo fontes da diretoria, a avaliação é de que a crítica pode gerar punição. {tecnico} recebeu o recado na reapresentação. |
+| DEC-019 | Crítica à arbitragem | Sensacionalista | Resultado derrota | Baixa | +P | -P | ROUBO! {tecnico} explode contra a arbitragem! | Bomba! {tecnico} garante que o {clube} foi prejudicado e que a arbitragem decidiu o jogo! Vem punição por aí! |
+| DEC-020 | Crítica à arbitragem | Analista tático | Resultado derrota | Alta | 0 | -P | Arbitragem não explica o {placar} | O lance polêmico existiu, mas o time já vinha cedendo espaço pelos lados. Reclamar desvia o foco da correção que {tecnico} precisa fazer. |
