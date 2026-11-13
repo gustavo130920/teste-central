@@ -14,6 +14,12 @@ import { GDD } from '../motor/parametros.ts';
 import type { Rng } from '../motor/rng.ts';
 import type { Gravidade, ResultadoPartida } from '../motor/tipos.ts';
 import type { LeituraJogo } from './adaptacao.ts';
+import type { EstadoEvolucao } from '../gestao/evolucao.ts';
+import { EVOLUCAO, criarEvolucao } from '../gestao/evolucao.ts';
+import { Nomes } from '../gestao/base.ts';
+import type { Foco } from '../gestao/treino.ts';
+import type { Comercial, Conta, Marca } from '../gestao/financas.ts';
+import { criarConta } from '../gestao/financas.ts';
 
 export const ENTRE_JOGOS = {
   /** GDD-gestao 1: tipo de ciclo pelos dias até o próximo jogo. */
@@ -68,7 +74,30 @@ export interface Memoria {
   /** Comissão e treino de cada clube (etapa 4); vazio sem `gestao`. */
   gestao: Map<string, ClubeGestao>;
   contagem: { lesoesTreino: number; recaidas: number; sequelas: number; suspensoes: number; semGoleiro: number; adaptacoes: number; leiturasCertas: number; leiturasErradas: number };
+  /** Etapa 4, 3ª fatia: evolução de cada jogador (elenco e base), base de cada clube e o que cada clube fez no período. */
+  evolucao: Map<string, EstadoEvolucao>;
+  base: Map<string, Jogador[]>;
+  periodo: Map<string, PeriodoClube>;
+  nomes: Nomes;
+  seq: number;
+  evo: { joias: number; safra: number; chegouAoPot: number[]; pontos: number; perdas: number; ganhosMentais: number };
+  /** Etapa 4, 4ª fatia: conta de cada clube brasileiro e as marcas; vazio sem `comercial`. */
+  financas: Map<string, Conta>;
+  marcas: Marca[];
 }
+
+/** Jogos e treino do clube nos períodos de 4 e de 13 semanas e no ano. */
+export interface PeriodoClube {
+  jogos28: number;
+  jogos91: number;
+  jogosAno: number;
+  treinoSoma: number;
+  ciclos: number;
+  focos: Partial<Record<Foco, number>>;
+}
+
+export const novoEstado = (moral: number = MORAL.inicial): EstadoJogador =>
+  ({ condicao: ENTRE_JOGOS.preTemporada, ciclosSemJogar: 0, voltaDia: null, ultimaLesao: null, amarelos: {}, suspensao: {}, moral, ciclosSemTitular: 0, titularidades: 0 });
 
 export interface ClubeGestao {
   comissao: ComissaoClube;
@@ -89,6 +118,10 @@ export interface DadosGestao {
   comissoes: Record<string, Profissional[]>;
   entradas: Record<string, { clube: Clube; tecnico: Tecnico }>;
   tatica: Tatica;
+  /** Nomes já usados no mundo (para os jovens da base); sem eles, só os dos elencos. */
+  nomes?: Nomes;
+  /** Finanças e comercial (4ª fatia); sem eles, sem contas. */
+  comercial?: Comercial;
 }
 
 /** Valores da comissão que a memória usa (efetivos com `gestao`, neutros sem). */
@@ -107,10 +140,18 @@ export function criarMemoria(elencos: Record<string, Jogador[]>, clubes: string[
   const jogadores = new Map<string, EstadoJogador>();
   for (const c of clubes) {
     copia[c] = elencos[c].map((j) => ({ ...j, atributos: { ...j.atributos } }));
-    for (const j of copia[c]) jogadores.set(j.id, { condicao: ENTRE_JOGOS.preTemporada, ciclosSemJogar: 0, voltaDia: null, ultimaLesao: null, amarelos: {}, suspensao: {}, moral: MORAL.inicial, ciclosSemTitular: 0, titularidades: 0 });
+    for (const j of copia[c]) jogadores.set(j.id, novoEstado());
   }
   const gestao = new Map<string, ClubeGestao>();
+  const evolucao = new Map<string, EstadoEvolucao>();
+  const base = new Map<string, Jogador[]>();
+  const periodo = new Map<string, PeriodoClube>();
   if (dados) {
+    for (const c of clubes) {
+      for (const j of copia[c]) evolucao.set(j.id, criarEvolucao(j));
+      base.set(c, []);
+      periodo.set(c, novoPeriodo());
+    }
     for (const id of clubes) {
       const ent = dados.entradas[id];
       const profissionais = dados.comissoes[id];
@@ -119,8 +160,17 @@ export function criarMemoria(elencos: Record<string, Jogador[]>, clubes: string[
       gestao.set(id, { comissao, tecnico: ent.tecnico, semanas, treino: criarTreino(chaveTatica(ent.tecnico), semanas), respaldo: respaldoInicial(ent.tecnico), jogos: 0, titulo: false });
     }
   }
-  return { elencos: copia, jogadores, ultimoJogo: new Map(), leituras: new Map(), gestao, contagem: { lesoesTreino: 0, recaidas: 0, sequelas: 0, suspensoes: 0, semGoleiro: 0, adaptacoes: 0, leiturasCertas: 0, leiturasErradas: 0 } };
+  return {
+    elencos: copia, jogadores, ultimoJogo: new Map(), leituras: new Map(), gestao,
+    contagem: { lesoesTreino: 0, recaidas: 0, sequelas: 0, suspensoes: 0, semGoleiro: 0, adaptacoes: 0, leiturasCertas: 0, leiturasErradas: 0 },
+    evolucao, base, periodo, nomes: dados?.nomes ?? new Nomes(Object.values(copia).flat()), seq: 0,
+    evo: { joias: 0, safra: 0, chegouAoPot: [], pontos: 0, perdas: 0, ganhosMentais: 0 },
+    financas: new Map((dados?.comercial?.fichas ?? []).filter((f) => dados!.entradas[f.clubeId]).map((f) => [f.clubeId, criarConta(f, dados!.entradas[f.clubeId].clube)])),
+    marcas: dados?.comercial?.marcas ?? [],
+  };
 }
+
+export const novoPeriodo = (): PeriodoClube => ({ jogos28: 0, jogos91: 0, jogosAno: 0, treinoSoma: 0, ciclos: 0, focos: {} });
 
 export function tipoCiclo(dias: number): 'curto' | 'normal' | 'longo' {
   const c = ENTRE_JOGOS.ciclo;
@@ -177,6 +227,13 @@ export function prepararJogo(m: Memoria, clube: string, dia: number, competicao:
     const d = decidirIA(g.treino, chave, g.semanas, ciclo);
     treinar(g.treino, chave, g.semanas, ciclo, d.carga, d.foco, treinoTatico(g.tecnico, g.comissao));
     carga = d.carga;
+    // Evolução (GDD-gestao 5): média do ganho de treino dos ciclos (carga × ciclo) e foco mais usado no período.
+    const p = m.periodo.get(clube);
+    if (p) {
+      p.treinoSoma += TREINO.carga[d.carga].ganho * TREINO.ciclo[ciclo];
+      p.ciclos += 1;
+      p.focos[d.foco] = (p.focos[d.foco] ?? 0) + 1;
+    }
     cicloDeMoral(m, g, elenco);
   }
   for (const j of elenco) {
@@ -254,6 +311,7 @@ export function registrarJogo(m: Memoria, clube: string, lado: 0 | 1, r: Resulta
     s.suspensao[competicao] = Math.max(0, (s.suspensao[competicao] ?? 0) - 1);
   }
   const t = r.times[lado];
+  contarMinutos(m, clube, t.participantes.map((x) => x.j.id));
   const jogaram = new Set(t.participantes.map((x) => x.j.id));
   for (const j of elenco) {
     const s = m.jogadores.get(j.id)!;
@@ -290,6 +348,25 @@ export function registrarJogo(m: Memoria, clube: string, lado: 0 | 1, r: Resulta
     const j = elenco.find((y) => y.id === l.jogador)!;
     lesionar(m, j, m.jogadores.get(j.id)!, l.gravidade, diasFora(l.semanas, j.idade, com.tratamento), dia, rng);
   }
+}
+
+/** Minutos do jogo para a evolução: quem entrou joga 25 e os titulares dividem o resto dos 990 (PROVISORIO). */
+function contarMinutos(m: Memoria, clube: string, ids: string[]): void {
+  const p = m.periodo.get(clube);
+  if (!p) return;
+  p.jogos28 += 1;
+  p.jogos91 += 1;
+  p.jogosAno += 1;
+  const reservas = Math.max(0, ids.length - 11);
+  const titular = 90 - (EVOLUCAO.minutosReserva * reservas) / 11;
+  ids.forEach((id, i) => {
+    const s = m.evolucao.get(id);
+    if (!s) return;
+    const min = i < 11 ? titular : EVOLUCAO.minutosReserva;
+    s.min28 += min;
+    s.min91 += min;
+    s.minAno += min;
+  });
 }
 
 /** Depois do jogo (GDD-gestao 3): moral do fim do jogo + resultado, nota e titularidade, para o elenco relacionado. */

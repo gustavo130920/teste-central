@@ -3,6 +3,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { Clube, FraseNarracao, Jogador, Profissional, Tatica, Tecnico } from '../motor/dados.ts';
 import type { EntradaTime } from '../motor/tipos.ts';
+import type { Comercial } from '../gestao/financas.ts';
 
 const GERADO = join(dirname(fileURLToPath(import.meta.url)), '..', 'gerado');
 const ler = <T>(arq: string): T => JSON.parse(readFileSync(join(GERADO, arq), 'utf8')) as T;
@@ -15,6 +16,11 @@ export interface Base {
   frases: FraseNarracao[];
   /** Comissões por clube (a Europa não tem). */
   comissoes: Record<string, Profissional[]>;
+  /** Jogadores, técnicos (em `tecnicos`, sem clube) e profissionais livres. */
+  livres: Jogador[];
+  profissionaisLivres: Profissional[];
+  /** Finanças e comercial (etapa 4, 4ª fatia). */
+  comercial: Comercial;
 }
 
 export function carregarBase(): Base {
@@ -25,6 +31,9 @@ export function carregarBase(): Base {
     tatica: ler<Tatica>('tatica.json'),
     frases: ler<FraseNarracao[]>('narracao.json'),
     comissoes: ler<{ clubes: Record<string, Profissional[]> }>('comissao.json').clubes,
+    livres: ler<Jogador[]>('livres.json'),
+    profissionaisLivres: ler<{ livres: Profissional[] }>('comissao.json').livres,
+    comercial: ler<Comercial>('comercial.json'),
   };
 }
 

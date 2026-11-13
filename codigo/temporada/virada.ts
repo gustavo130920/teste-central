@@ -7,6 +7,13 @@ import type { Memoria } from './memoria.ts';
 import { ENTRE_JOGOS } from './memoria.ts';
 import type { Temporada } from './temporada.ts';
 import { LIGAS, simularTemporada } from './temporada.ts';
+import { Nomes } from '../gestao/base.ts';
+import type { ResumoPessoas } from './pessoas.ts';
+import { viradaPessoas } from './pessoas.ts';
+import { criarRng, semearDeTexto } from '../motor/rng.ts';
+import type { Comercial } from '../gestao/financas.ts';
+import type { ResumoFinancas } from './contas.ts';
+import { fasesDasCopas, viradaContas } from './contas.ts';
 
 export const VIRADA = {
   diasNoAno: 364,
@@ -28,6 +35,12 @@ export interface Resumo {
   folgasCopaDoBrasil: string[];
   reputacao: Record<string, number>;
   torcida: Record<string, number>;
+  /** Etapa 6 (Pessoas) e 8 (Reposição); só com a Gestão. */
+  pessoas?: ResumoPessoas;
+  joias?: number;
+  safra?: number;
+  /** Etapa 4, 4ª fatia: finanças dos brasileiros. */
+  financas?: ResumoFinancas;
 }
 
 export interface Mundo {
@@ -46,17 +59,42 @@ export interface Mundo {
   torcidaPontos: Map<string, number>;
   anosSemLibertadores: Map<string, number>;
   historico: Resumo[];
+  /** Etapa 4, 3ª fatia: livres, nomes usados no mundo e a semente da carreira. */
+  livres: Jogador[];
+  profissionaisLivres: Profissional[];
+  livreDesde: Map<string, { ano: number; dispensado: boolean }>;
+  nomes: Nomes;
+  semente: number;
+  /** Etapa 4, 4ª fatia: fichas comerciais (as contas vivem na memória). */
+  comercial?: Comercial;
 }
 
-export function criarMundo(base: { clubes: Clube[]; tecnicos: Tecnico[]; elencos: Record<string, Jogador[]>; tatica: Tatica; comissoes?: Record<string, Profissional[]> }): Mundo {
+export interface BaseMundo {
+  clubes: Clube[];
+  tecnicos: Tecnico[];
+  elencos: Record<string, Jogador[]>;
+  tatica: Tatica;
+  comissoes?: Record<string, Profissional[]>;
+  livres?: Jogador[];
+  profissionaisLivres?: Profissional[];
+  comercial?: Comercial;
+}
+
+export function criarMundo(base: BaseMundo): Mundo {
   const clubes = base.clubes.map((c) => ({ ...c }));
+  // Cópias: a carreira muda idade, atributos e clube de técnicos e livres.
+  const tecnicos = base.tecnicos.map((t) => ({ ...t, trabalho: t.trabalho ? { ...t.trabalho } : null }));
+  const livres = (base.livres ?? []).map((j) => ({ ...j, atributos: { ...j.atributos }, qualidades: [...j.qualidades], defeitos: [...j.defeitos] }));
+  const profissionaisLivres = (base.profissionaisLivres ?? []).map((p) => ({ ...p, atributos: { ...p.atributos } }));
+  const nomes = new Nomes([...Object.values(base.elencos).flat(), ...livres, ...tecnicos, ...profissionaisLivres, ...Object.values(base.comissoes ?? {}).flat()]);
   const clubesPorLiga = Object.fromEntries(LIGAS.map((l) => [l, clubes.filter((c) => c.liga === l && !c.reserva).map((c) => c.id)]));
   const lib = ANO1.libertadores;
   return {
-    ano: 1, clubes, tecnicos: base.tecnicos, elencos: base.elencos, tatica: base.tatica, comissoes: base.comissoes, clubesPorLiga,
+    ano: 1, clubes, tecnicos, elencos: base.elencos, tatica: base.tatica, comissoes: base.comissoes, clubesPorLiga,
     europeus: clubes.filter((c) => c.liga === 'europa').map((c) => c.id),
     libertadores: [lib.brasil, lib.argentina, lib.colombia, lib.chile], folgasCopaDoBrasil: [...ANO1.folgasCopaDoBrasil],
     memoria: null, torcidaPontos: new Map(), anosSemLibertadores: new Map(), historico: [],
+    livres, profissionaisLivres, livreDesde: new Map(livres.map((j) => [j.id, { ano: 0, dispensado: false }])), nomes, semente: 0, comercial: base.comercial,
   };
 }
 
@@ -72,9 +110,12 @@ function entradas(m: Mundo): Record<string, EntradaTime> {
 export function jogarAno(m: Mundo, semente: number, adaptacao = true): Temporada {
   const t = simularTemporada({
     semente: semente * 1000 + m.ano, clubesPorLiga: m.clubesPorLiga, europeus: m.europeus, entradas: entradas(m), elencos: m.elencos, tatica: m.tatica,
-    libertadores: m.libertadores, folgasCopaDoBrasil: m.folgasCopaDoBrasil, memoria: m.memoria ?? undefined, adaptacao, comissoes: m.comissoes,
+    libertadores: m.libertadores, folgasCopaDoBrasil: m.folgasCopaDoBrasil, memoria: m.memoria ?? undefined, adaptacao, comissoes: m.comissoes, nomes: m.nomes, comercial: m.comercial,
   });
   m.memoria = t.memoria;
+  // A memória guarda os elencos vivos (evolução, subidas, aposentadorias).
+  m.elencos = t.memoria.elencos;
+  m.semente = semente;
   return t;
 }
 
@@ -147,6 +188,25 @@ export function virar(m: Mundo, t: Temporada): Resumo {
     }
     m.torcidaPontos.set(c.id, pts);
   }
+  // 1, 3 e 5. Finanças (etapa 4, 4ª fatia): premiação, TV, perfil, patrocínios, SAF, estrutura, orçamento.
+  let financas: ResumoFinancas | undefined;
+  if (m.memoria?.financas.size) {
+    const copas = fasesDasCopas(t.jogos, (id) => t.copas.find((c) => c.id === id)?.campeao() ?? null);
+    financas = viradaContas(m.memoria, { ano: m.ano, clubes: m.clubes, tabelas: t.tabelas, copas, rng: criarRng(semearDeTexto(`${m.semente}-financas-${m.ano}`)) });
+  }
+  // 6. Pessoas e 8. Reposição (etapa 4, 3ª fatia; só com a Gestão).
+  let pessoas: ResumoPessoas | undefined;
+  const mem = m.memoria;
+  const joias = mem?.evo.joias;
+  const safra = mem?.evo.safra;
+  if (mem && mem.gestao.size) {
+    const w = { ano: m.ano, tecnicos: m.tecnicos, tatica: m.tatica, livres: m.livres, profissionaisLivres: m.profissionaisLivres, livreDesde: m.livreDesde, estruturaCT: new Map(m.clubes.map((c) => [c.id, c.estruturaCT])) };
+    pessoas = viradaPessoas(mem, w, criarRng(semearDeTexto(`${m.semente}-pessoas-${m.ano}`)));
+    m.livres = w.livres;
+    m.profissionaisLivres = w.profissionaisLivres;
+    mem.evo.joias = 0;
+    mem.evo.safra = 0;
+  }
   // 9. Ano novo.
   m.clubesPorLiga = { ...m.clubesPorLiga, 'serie-a': [...a.slice(0, -v.trocas), ...promovidos], 'serie-b': [...rebaixados, ...b.slice(v.trocas)] };
   for (const c of m.clubes) {
@@ -156,7 +216,7 @@ export function virar(m: Mundo, t: Temporada): Resumo {
   m.libertadores = libertadores;
   m.folgasCopaDoBrasil = folgas;
   if (m.memoria) novoAnoMemoria(m.memoria);
-  const resumo: Resumo = { ano: m.ano, campeoes, rebaixados, promovidos, libertadores, folgasCopaDoBrasil: folgas, reputacao, torcida };
+  const resumo: Resumo = { ano: m.ano, campeoes, rebaixados, promovidos, libertadores, folgasCopaDoBrasil: folgas, reputacao, torcida, pessoas, joias, safra, financas };
   m.historico.push(resumo);
   m.ano += 1;
   return resumo;
@@ -177,6 +237,8 @@ export function novoAnoMemoria(mem: Memoria): void {
     if (s.voltaDia === null) s.condicao = ENTRE_JOGOS.preTemporada;
   }
   for (const s of mem.jogadores.values()) s.titularidades = 0;
+  for (const s of mem.evolucao.values()) s.minAno = 0;
+  for (const p of mem.periodo.values()) p.jogosAno = 0;
   for (const g of mem.gestao.values()) { g.jogos = 0; g.titulo = false; }
   // GDD-gestao 8: a química com o técnico sobe 1 por ano de trabalho junto.
   for (const g of mem.gestao.values()) for (const p of g.comissao.profissionais) if (p.quimica !== null) p.quimica = Math.min(20, p.quimica + 1);

@@ -14,6 +14,12 @@ import { ANO1, criarChampions, criarCopaDoBrasil, criarLibertadores, criarMundia
 import { adaptar, lerJogo } from './adaptacao.ts';
 import type { Desfalques, Memoria } from './memoria.ts';
 import { criarMemoria, prepararJogo, registrarJogo } from './memoria.ts';
+import type { Nomes } from '../gestao/base.ts';
+import { EVOLUCAO } from '../gestao/evolucao.ts';
+import { novaSafra, periodoDeEvolucao, periodoDePerfil } from './pessoas.ts';
+import type { Comercial } from '../gestao/financas.ts';
+import { FINANCAS } from '../gestao/financas.ts';
+import { fecharMesContas, jogoNasContas } from './contas.ts';
 
 export const LIGAS = ['serie-a', 'serie-b', 'argentina', 'colombia', 'chile'] as const;
 
@@ -61,6 +67,10 @@ export interface EntradaTemporada {
   adaptacao?: boolean;
   /** Comissões por clube (etapa 4). Sem elas, comissão neutra e sem treino, como na etapa 3. */
   comissoes?: Record<string, Profissional[]>;
+  /** Nomes já usados no mundo, para os jovens da base. */
+  nomes?: Nomes;
+  /** Finanças e comercial (etapa 4, 4ª fatia); só no ano 1, com as comissões. */
+  comercial?: Comercial;
 }
 
 export function simularTemporada(e: EntradaTemporada): Temporada {
@@ -68,7 +78,9 @@ export function simularTemporada(e: EntradaTemporada): Temporada {
   const rngDe = (s: string) => criarRng(semearDeTexto(`${e.semente}-${s}`));
   const dasLigas = ligas.flatMap((liga) => jogosDaLiga(liga, e.clubesPorLiga[liga], rngDe(`tabela-${liga}`)));
   const memoria = e.memoria ?? criarMemoria(e.elencos, [...ligas.flatMap((l) => e.clubesPorLiga[l]), ...(e.europeus ?? [])],
-    e.comissoes ? { comissoes: e.comissoes, entradas: e.entradas, tatica: e.tatica } : undefined);
+    e.comissoes ? { comissoes: e.comissoes, entradas: e.entradas, tatica: e.tatica, nomes: e.nomes, comercial: e.comercial } : undefined);
+  const ligaDe = (id: string): string[] => ligas.map((l) => e.clubesPorLiga[l]).find((cs) => cs.includes(id)) ?? [];
+  const comGestao = memoria.gestao.size > 0;
 
   const copas: Copa[] = [];
   if (e.europeus) {
@@ -83,6 +95,8 @@ export function simularTemporada(e: EntradaTemporada): Temporada {
   const jogos: JogoDisputado[] = [];
   const ultimoDia = Math.max(...dasLigas.map((j) => j.dia), 52 * 7);
   for (let dia = 1; dia <= ultimoDia; dia++) {
+    // Etapa 4, 3ª fatia: safra na semana 1 (GDD-gestao 5).
+    if (dia === 1 && comGestao) novaSafra(memoria, rngDe('safra'));
     const doDia: (Jogo | JogoCopa)[] = dasLigas.filter((j) => j.dia === dia);
     for (const c of copas) doDia.push(...c.jogosDoDia(dia, rngDe(`${c.id}-${dia}`)));
     for (const j of doDia) {
@@ -124,6 +138,7 @@ export function simularTemporada(e: EntradaTemporada): Temporada {
       }
       const decisao = !!jc && DECISAO.includes(jc.fase);
       for (const k of [0, 1] as const) registrarJogo(memoria, lados[k], k, r, j.dia, j.competicao, prep[k].desfalques.suspensos, rngMem, decisao);
+      if (memoria.financas.size) jogoNasContas(memoria, j.competicao, e.entradas[j.mandante].clube, j.visitante, r.placar, !!jc?.neutro, decisao, ligaDe);
       if (copa && jc) {
         copa.registrar(jc, res, penaltis);
         // Título na temporada: +10 no alvo do Respaldo (GDD-gestao 3). Ligas terminam no fim do ano, sem ciclo depois.
@@ -134,6 +149,11 @@ export function simularTemporada(e: EntradaTemporada): Temporada {
       jogos.push(d);
       e.aoJogar?.(d);
     }
+    // Evolução a cada 4 semanas e perfis de jovem a cada 13 (GDD-gestao 5).
+    if (comGestao && dia % EVOLUCAO.periodoDias === 0) periodoDeEvolucao(memoria, rngDe(`evolucao-${dia}`));
+    if (comGestao && dia % EVOLUCAO.perfilDias === 0) periodoDePerfil(memoria);
+    // Fechamento do mês (GDD-gestao 7): 13 meses de 4 semanas.
+    if (memoria.financas.size && dia % FINANCAS.diasMes === 0 && dia <= FINANCAS.diasMes * FINANCAS.meses) fecharMesContas(memoria, dia, (id) => e.entradas[id].clube);
   }
 
   const tabelas: Record<string, Linha[]> = {};

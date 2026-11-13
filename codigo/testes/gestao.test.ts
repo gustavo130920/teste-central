@@ -122,3 +122,92 @@ test('GDD-gestao 3: moral do jogador e Respaldo', () => {
   assert.equal(moralDoGrupo(elenco, (id) => (id === 'a' ? 70 : 40), () => 0, 0), (70 * 2 + 40) / 3);
   assert.equal(MORAL.inicial, 60);
 });
+
+// ---------- 3ª fatia: evolução, envelhecimento, base e aposentadorias ----------
+import { EVOLUCAO, aplicarPontos, chanceEnvelhecer, criarEvolucao, deltaTrabalho, ganho, mediaChaves, resultadoPerfil } from '../gestao/evolucao.ts';
+import { BASE, chanceAposentar, chanceAposentarPessoa, escolherSubidas, evoluirPessoa, potencialDaSafra, quantosNaSafra } from '../gestao/base.ts';
+import { criarMundo, jogarAno, virar } from '../temporada/virada.ts';
+
+const jogadorTeste = (over: Partial<import('../motor/dados.ts').Jogador> = {}) => {
+  const b = carregarBase();
+  const j = Object.values(b.elencos).flat().find((x) => x.posicao === 'MC')!;
+  return { ...j, atributos: { ...j.atributos }, qualidades: [...j.qualidades], defeitos: [...j.defeitos], ...over };
+};
+
+test('GDD-gestao 5: ganho por idade, minutos, comissão, moral e (Pot − Nota) ÷ 2', () => {
+  const f = { minutos: 0.6, treino: 1, treinoTecnico: 10, jovens: 10, exemplo: false, moral: 55 };
+  // 18 anos, Pot 16, nota 9: 0,6 × 1,2 × 1 × (0,8 + 0,2) × (0,8 + 0,2) × 1 × 1.
+  assert.ok(Math.abs(ganho(jogadorTeste({ idade: 18, nota: 9, potencial: 16 }), f) - 0.72) < 1e-9);
+  // Pot − Nota = 1: metade; 29 anos: zero; na base: × 1,2 × 0,6.
+  assert.ok(Math.abs(ganho(jogadorTeste({ idade: 23, nota: 12, potencial: 13 }), f) - 0.35 * 1.2 * 0.5) < 1e-9);
+  assert.equal(ganho(jogadorTeste({ idade: 29, nota: 10, potencial: 15 }), f), 0);
+  assert.ok(Math.abs(ganho(jogadorTeste({ idade: 17, nota: 8, potencial: 15 }), { ...f, minutos: null }) - 0.6 * 1.2 * 0.6) < 1e-9);
+  // Moral 71+: × 1,1; Exemplo profissional: × 1,1 até 21; menos de 10% dos minutos: × 0,5.
+  const j = jogadorTeste({ idade: 20, nota: 9, potencial: 16 });
+  assert.ok(Math.abs(ganho(j, { ...f, moral: 80, exemplo: true, minutos: 0.05 }) / ganho(j, f) - (1.1 * 1.1 * 0.5) / 1.2) < 1e-9);
+});
+
+test('pontos viram +1 em atributos e a nota anda pela variação das chaves, sem passar do Potencial', () => {
+  const j = jogadorTeste({ idade: 18, nota: 10, potencial: 12 });
+  const s = criarEvolucao(j);
+  const media = mediaChaves(j);
+  s.pontos = 30;
+  const n = aplicarPontos(j, s, 'fisico', criarRng(7));
+  assert.ok(n > 0 && s.pontos < 1);
+  assert.ok(mediaChaves(j) > media);
+  assert.equal(j.nota, 12); // limitada ao Potencial
+});
+
+test('envelhecimento, perfis e resultado aos 22', () => {
+  assert.equal(chanceEnvelhecer(29, false, 10), 0);
+  assert.equal(chanceEnvelhecer(33, false, 10), 20);
+  assert.equal(chanceEnvelhecer(33, true, 10), 10); // goleiro: idade − 3
+  assert.ok(Math.abs(chanceEnvelhecer(36, false, 20) - 40 * 0.75) < 1e-9);
+  // Psicólogo 16, coordenador 15, mentor, minutos, grupo 62: 3 + 1 + 2 + 1 + 1.
+  assert.equal(deltaTrabalho({ naBase: false, psicologo: 16, coordenador: 15, mentor: true, minutos: 0.3, grupo: 62 }), 8);
+  assert.equal(deltaTrabalho({ naBase: true, psicologo: 10, coordenador: 10, mentor: true, minutos: 0, grupo: 30 }), -1 + 1 - 2);
+  const bem = jogadorTeste({ perfilJovem: 'Marrento', qualidades: [], defeitos: [], potencial: 15, nota: 12 });
+  const rng = criarRng(1);
+  const r = resultadoPerfil(bem, 95, rng);
+  if (r === 'bem') { assert.equal(bem.potencial, 16); assert.ok(['Incendiário', 'Decisivo'].includes(bem.qualidades[0])); }
+});
+
+test('base: safra, joia, subidas e aposentadorias', () => {
+  assert.equal(quantosNaSafra(14), 5);
+  assert.equal(quantosNaSafra(4), 3);
+  const rng = criarRng(3);
+  let joias = 0;
+  for (let i = 0; i < 2000; i++) { const p = potencialDaSafra(10, 10, rng); if (p.joia) { joias += 1; assert.ok(p.pot >= 17); } else assert.ok(p.pot <= 16); }
+  assert.ok(joias > 30 && joias < 90); // 3%
+  const elenco = Array.from({ length: 22 }, (_, i) => jogadorTeste({ id: `E${i}`, posicao: i < 2 ? 'GOL' : 'MC', nota: 12 }));
+  const base = [jogadorTeste({ id: 'B1', posicao: 'CA', nota: 8 }), jogadorTeste({ id: 'B2', posicao: 'MC', nota: 11 }), jogadorTeste({ id: 'B3', posicao: 'GOL', nota: 13 })];
+  const sobe = escolherSubidas(elenco, base, 1).map((j) => j.id);
+  assert.ok(sobe.includes('B1')); // CA em falta sobe primeiro
+  assert.ok(!sobe.includes('B2')); // MC muito acima do alvo
+  assert.equal(chanceAposentar(jogadorTeste({ idade: 32, nota: 12 }), false, 0.6), 0);
+  assert.equal(chanceAposentar(jogadorTeste({ idade: 35, nota: 8 }), true, 0), Math.min(100, 30 * 2 * 1.5));
+  assert.equal(chanceAposentar(jogadorTeste({ idade: 37, nota: 12, posicao: 'GOL' }), false, 0.6), 5); // 37 − 3 = 34: 10% × 0,5
+  assert.equal(chanceAposentarPessoa(71, true), 17.5);
+  const at = { Lei: 10 };
+  evoluirPessoa(at, 30, 16, { n: () => 0.55, int: () => 0, pct: () => false } as never);
+  assert.equal(at.Lei, 11); // 50 + 10 do CT
+  assert.equal(BASE.prazo, 20);
+});
+
+test('carreira com Gestão: 2 anos com evolução, safra e virada de pessoas', () => {
+  const m = criarMundo(carregarBase());
+  const idade = m.elencos['GUA'][0].idade;
+  const id = m.elencos['GUA'][0].id;
+  const r1 = virar(m, jogarAno(m, 11));
+  assert.ok(r1.pessoas && r1.safra! > 0);
+  const j = m.elencos['GUA'].find((x) => x.id === id);
+  if (j) assert.equal(j.idade, idade + 1);
+  for (const e of Object.values(m.elencos)) {
+    assert.ok(e.length >= BASE.elencoMin && e.length <= BASE.elencoMax);
+    assert.ok(e.filter((x) => x.posicao === 'GOL').length >= BASE.goleirosMin);
+  }
+  assert.ok(m.livres.length >= 30);
+  assert.ok(m.tecnicos.filter((t) => t.clubeId === null).length >= 15);
+  virar(m, jogarAno(m, 11));
+  assert.ok(m.memoria!.evo.pontos > 0 && EVOLUCAO.periodoDias === 28);
+});

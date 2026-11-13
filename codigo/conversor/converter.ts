@@ -6,6 +6,8 @@ import type { Clube, FraseNarracao, Jogador, Profissional, Tatica, Tecnico } fro
 import {
   Relatorio, lerClubes, lerComissoes, lerCombinacoes, lerElenco, lerEstilos, lerFormacoes, lerInstrucoes, lerNarracao, lerTecnicos,
 } from './parsers.ts';
+import { lerFichas, lerMarcas, lerReduzidas } from './comercial.ts';
+import type { Comercial } from '../gestao/financas.ts';
 
 const raiz = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const DADOS = join(raiz, 'dados');
@@ -61,6 +63,16 @@ for (const liga of LIGAS.filter((l) => l !== 'europa')) {
 }
 const comissaoLivre = lerComissoes(ler('comissao', 'livres.md'), rel).flatMap((c) => c.profissionais);
 
+// Comercial (gerador-comercial): fichas completas dos brasileiros, reduzidas dos demais e marcas. Depois dos elencos (nome curto).
+const comercial: Comercial = {
+  fichas: ['serie-a', 'serie-b'].flatMap((l) => lerFichas(ler('comercial', `${l}.md`), clubes, rel)),
+  reduzidas: ['argentina', 'colombia', 'chile', 'europa'].flatMap((l) => lerReduzidas(ler('comercial', `${l}.md`), clubes, rel)),
+  marcas: lerMarcas(ler('comercial', '_marcas.md'), rel),
+};
+for (const c of clubes.filter((x) => !x.reserva)) {
+  if (![...comercial.fichas, ...comercial.reduzidas].some((f) => f.clubeId === c.id)) avisos.push(`${c.id}: sem ficha comercial`);
+}
+
 const tatica: Tatica = {
   estilos: lerEstilos(ler('tatica', 'estilos.md'), rel),
   formacoes: lerFormacoes(ler('tatica', 'formacoes.md'), rel),
@@ -94,6 +106,7 @@ gravar('livres.json', livres);
 gravar('tatica.json', tatica);
 gravar('comissao.json', { clubes: comissoes, livres: comissaoLivre });
 gravar('narracao.json', narracao);
+gravar('comercial.json', comercial);
 const contagem = {
   clubesCompetindo: competindo.length,
   clubesReserva: clubes.length - competindo.length,
@@ -110,6 +123,9 @@ const contagem = {
   instrucoes: tatica.instrucoes.length,
   combinacoes: tatica.combinacoes.length,
   frases: narracao.length,
+  fichasComerciais: comercial.fichas.length,
+  fichasReduzidas: comercial.reduzidas.length,
+  marcas: comercial.marcas.length,
 };
 gravar('_relatorio.json', { aviso: 'Gerado por conversor/converter.ts. Não edite gerado/ à mão.', contagem, problemas: rel.problemas, avisos });
 

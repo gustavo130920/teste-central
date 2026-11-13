@@ -218,8 +218,8 @@ A recaída repete a gravidade, com tempo de 50% a 100% do original.
 `Ganho = base da idade × minutos × treino × comissão × moral × (Pot − Nota) ÷ 2`, com o último fator limitado a 1.
 | Idade | Base | | Minutos no período | Fator |
 |---|---|---|---|---|
-| Até 18 | 0,9 | | 50% ou mais | × 1,2 |
-| 19 a 21 | 0,75 | | 10% a 49% | × 1,0 |
+| Até 18 | 0,6 | | 50% ou mais | × 1,2 |
+| 19 a 21 | 0,5 | | 10% a 49% | × 1,0 |
 | 22 a 24 | 0,35 | | Menos de 10% | × 0,5 |
 | 25 a 28 | 0,1 | | | |
 | 29 ou mais | 0 | | | |
@@ -271,7 +271,7 @@ Exemplos: Trabalho 95 dá 66% de bem e 3% de mal; 50 dá 35% e 25%; 15 dá 11% e
 | Jovens por safra | `3 + estrutura da base ÷ 5`, arredondado para baixo |
 | Idade | 16 ou 17 |
 | Potencial médio | `8 + estrutura da base × 0,2 + Captação × 0,15`, ± 4 |
-| Joia (Pot 17 ou mais) | `2% + (estrutura da base + Captação) × 0,2%` por jovem |
+| Joia (Pot 17 ou mais) | `2% + (estrutura da base + Captação) × 0,05%` por jovem |
 | Nota inicial | Pot − 4 a Pot − 7 |
 | Perfil | Sorteado entre os 4, em partes iguais |
 
@@ -684,6 +684,8 @@ CT 15 ou mais soma 10 pontos na chance de +1. A Reputação segue a regra do té
 **Renovação.** A partir de 12 meses do fim, a IA renova com titulares e com quem tem Pot 2 ou mais acima da nota. De 33 anos em diante, só contratos de 1 ano. Os demais saem no vencimento.
 
 **Estrutura.** Na virada, sobe 1 nível de CT ou base se o caixa for maior que 50% da receita e cobrir o custo. Formador prioriza a base; os demais, o CT.
+
+**Dívida (Gustavo, 13/11/2026).** Com caixa negativo no fim do mês, pede empréstimo para zerar o caixa, até 30% da receita. Na virada, depois da estrutura, amortiza o caixa acima de 50% da receita.
 
 ### Europa
 **Clubes.** 16, com elenco e técnico próprios, sem comissão e sem finanças além de orçamento e teto de folha. A Força (1 a 20) vira a média das 11 melhores notas, mudando no máximo 1 por ano.
