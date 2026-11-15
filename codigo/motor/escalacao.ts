@@ -17,15 +17,16 @@ function notaNaVaga(j: Jogador, vaga: Posicao): number | null {
   return sec ? sec.nota : j.nota - 6;
 }
 
-function escolherOnze(elenco: Jogador[], pecas: PecaFormacao[]): (Jogador | null)[] {
-  const pares: { v: number; n: number; j: Jogador }[] = [];
+/** `escolhidos` (clube do jogador, 8ª fatia): entram primeiro, cada um na vaga de melhor encaixe; o resto completa. */
+function escolherOnze(elenco: Jogador[], pecas: PecaFormacao[], escolhidos?: Set<string>): (Jogador | null)[] {
+  const pares: { v: number; n: number; j: Jogador; e: number }[] = [];
   pecas.forEach((p, v) => {
     for (const j of elenco) {
       const n = notaNaVaga(j, p.posicao);
-      if (n !== null) pares.push({ v, n, j });
+      if (n !== null) pares.push({ v, n, j, e: escolhidos?.has(j.id) ? 0 : 1 });
     }
   });
-  pares.sort((a, b) => b.n - a.n || a.v - b.v || a.j.id.localeCompare(b.j.id));
+  pares.sort((a, b) => a.e - b.e || b.n - a.n || a.v - b.v || a.j.id.localeCompare(b.j.id));
   const onze: (Jogador | null)[] = pecas.map(() => null);
   const usados = new Set<string>();
   for (const { v, j } of pares) {
@@ -94,7 +95,8 @@ export function montarTime(indice: 0 | 1, ent: EntradaTime, tatica: Tatica, rng:
   const padrao: PadraoTime = { ...estilo.padrao, ...ent.padrao };
   const com = formacao(tatica, ent.tecnico.formacaoComBola).pecas;
   const sem = formacao(tatica, ent.tecnico.formacaoSemBola).pecas;
-  const onze = pouparCansados(escolherOnze(ent.elenco, com), ent.elenco, com, new Set(ent.poupados ?? []));
+  // Titulares escolhidos pelo jogador: sem o rodízio do auxiliar.
+  const onze = ent.titulares ? escolherOnze(ent.elenco, com, new Set(ent.titulares)) : pouparCansados(escolherOnze(ent.elenco, com), ent.elenco, com, new Set(ent.poupados ?? []));
   const ligacao = ligarSemBola(com.map((p) => ({ pos: p.posicao, zona: zonaDeCodigo(p.zona) })), sem);
   const escalados: Escalado[] = onze.map((j, i) => {
     if (!j) throw new Error(`${ent.clube.id}: faltou jogador para ${com[i].posicao} (${ent.elenco.length} disponíveis, ${ent.elenco.filter((x) => x.posicao === 'GOL').length} goleiros)`);

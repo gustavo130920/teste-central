@@ -243,7 +243,7 @@ function lesionar(m: Memoria, j: Jogador, s: EstadoJogador, gravidade: Gravidade
  * Antes do jogo do clube no dia: ciclo desde o último jogo (treino, lesão no treino, recuperação, volta de lesão)
  * e lista de quem fica de fora. Devolve o elenco disponível e a condição de cada um.
  */
-export function prepararJogo(m: Memoria, clube: string, dia: number, competicao: string, rng: Rng): { elenco: Jogador[]; condicao: Record<string, number>; poupados: string[]; desfalques: Desfalques; apoio?: ApoioComissao; moral?: Record<string, number> } {
+export function prepararJogo(m: Memoria, clube: string, dia: number, competicao: string, rng: Rng, escolherTreino?: (ciclo: Ciclo, ia: { carga: Carga; foco: Foco }) => { carga: Carga; foco: Foco } | null): { elenco: Jogador[]; condicao: Record<string, number>; poupados: string[]; desfalques: Desfalques; apoio?: ApoioComissao; moral?: Record<string, number> } {
   const ultimo = m.ultimoJogo.get(clube);
   const elenco = m.elencos[clube];
   const ciclo = ultimo === undefined ? null : tipoCiclo(dia - ultimo);
@@ -254,7 +254,8 @@ export function prepararJogo(m: Memoria, clube: string, dia: number, competicao:
   if (g && ciclo && g.treinoPerdido) { g.treinoPerdido = false; cicloDeMoral(m, g, elenco, clube); }
   else if (g && ciclo) {
     const chave = chaveTatica(g.tecnico);
-    const d = decidirIA(g.treino, chave, g.semanas, ciclo);
+    const ia = decidirIA(g.treino, chave, g.semanas, ciclo);
+    const d = escolherTreino?.(ciclo, ia) ?? ia;
     treinar(g.treino, chave, g.semanas, ciclo, d.carga, d.foco, treinoTatico(g.tecnico, g.comissao));
     carga = d.carga;
     // Evolução (GDD-gestao 5): média do ganho de treino dos ciclos (carga × ciclo) e foco mais usado no período.

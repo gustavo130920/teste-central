@@ -14,6 +14,7 @@ import { moralDoGrupo } from '../gestao/moral.ts';
 import type { Copa } from './copas.ts';
 import type { Memoria } from './memoria.ts';
 import { trocarTecnico } from './pessoas.ts';
+import type { ControleJogador } from './jogador.ts';
 
 export interface EstadoDiretoria {
   ficha: FichaDiretoria;
@@ -68,6 +69,8 @@ export interface CtxDiretoria {
   entradas: Record<string, EntradaTime>;
   tatica: Tatica;
   clubesPorLiga: Record<string, string[]>;
+  /** Clube do jogador (8ª fatia). */
+  jogador?: ControleJogador;
 }
 
 const DIAS_ANO = 364;
@@ -138,7 +141,8 @@ export function inicioDoAno(mem: Memoria, ctx: CtxDiretoria): void {
       const ordem = [...ctx.clubesPorLiga[liga]].sort((a, b) => forcaDoElenco(mem.elencos[b]) - forcaDoElenco(mem.elencos[a]));
       st.metas = metasGeradas(ordem.indexOf(clube) + 1, ordem.length);
     }
-    st.nivel = nivelDaIA(st.ficha.ambicao, !!st.metas['Modesta']);
+    const doJogador = ctx.jogador?.clube === clube && g.tecnico.humano ? ctx.jogador.meta?.(st.metas, mem) ?? null : null;
+    st.nivel = doJogador ?? nivelDaIA(st.ficha.ambicao, !!st.metas['Modesta']);
     if (!st.metas[st.nivel]) st.nivel = 'Padrão';
     mem.dir.niveis[st.nivel] += 1;
     const bonus = (st.metas[st.nivel]!.bonus) * (st.bonusMetade ? 0.5 : 1);
@@ -238,7 +242,7 @@ export function semanaNaDiretoria(mem: Memoria): void {
 /** Livre que assume: o de maior Reputação até a do clube + 1; sem ele, o de maior Reputação. */
 function escolherSubstituto(ctx: CtxDiretoria, clube: string, fora: Tecnico): Tecnico | null {
   const rep = ctx.entradas[clube]?.clube.reputacao ?? 10;
-  const livres = ctx.tecnicos.filter((t) => t.clubeId === null && t !== fora).sort((a, b) => b.reputacao - a.reputacao);
+  const livres = ctx.tecnicos.filter((t) => t.clubeId === null && t !== fora && !t.humano).sort((a, b) => b.reputacao - a.reputacao);
   return livres.find((t) => t.reputacao <= rep + DIRETORIA.substituto.folga) ?? livres[0] ?? null;
 }
 

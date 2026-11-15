@@ -13,7 +13,8 @@
     "sementes": "node terminal/sementes.ts",
     "tipos": "tsc --noEmit",
     "pretest": "node conversor/converter.ts",
-    "test": "node --test testes/*.test.ts"
+    "test": "node --test testes/*.test.ts",
+    "clube": "node terminal/clube.ts"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",

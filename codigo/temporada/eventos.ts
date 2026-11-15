@@ -19,6 +19,7 @@ import type { CtxDiretoria } from './diretoria.ts';
 import { confianca, humor } from './diretoria.ts';
 import type { Memoria } from './memoria.ts';
 import { folhaDoClube } from './mercado.ts';
+import type { ControleJogador } from './jogador.ts';
 
 export type Cenario = 'avancar' | 'aleatorio';
 export interface DadosEventos {
@@ -500,6 +501,8 @@ function preencher(t: string, x: Ctx, a: Alvos, extra: Record<string, string> = 
   return t.replace(/\{(\w+)\}/g, (_, k: string) => mapa[k] ?? '—');
 }
 
+/** Controle do clube do jogador, se este clube é dele e o técnico é o do jogador (8ª fatia). */
+const doJogador = (x: Ctx): ControleJogador | undefined => (x.dir.jogador?.clube === x.clube && gestao(x).tecnico.humano ? x.dir.jogador : undefined);
 const log = (x: Ctx, s: string): void => { if (x.mem.imprensa!.dados.texto === x.clube) x.mem.imprensa!.log.push(s); };
 const fmtEf = (es: Efeito[]): string => es.map((e) => (e.nivel ? `${e.k}${e.quem ? ' ' + e.quem : ''} ${e.sinal! > 0 ? '+' : '−'}${e.nivel}` : e.k + (e.n ? ` ${e.n}` : '') + (e.nome ? `: ${e.nome}` : '') + (e.id ? ` ${e.id}` : ''))).join(' · ');
 
@@ -541,7 +544,14 @@ function resolverEvento(p: Pendente, x: Ctx, proximo: ProximoJogo | null): void 
   const m = p.modelo;
   const xa: Ctx = { ...x, jogador: p.alvos.jogador };
   const ok = m.escolhas.filter((e) => !e.requisito || cumpre(e.requisito, xa));
-  const esc: Escolha = I.dados.cenario === 'avancar' ? (m.escolhas.find((e) => e.letra === m.delegado) ?? ok[0]) : ok[x.rng.int(0, ok.length - 1)];
+  // Clube do jogador (8ª fatia): ele escolhe; sem escolha ("Avançar"), vale o cenário.
+  const J = doJogador(x);
+  const letra = J?.evento?.({
+    modelo: m, texto: preencher(m.texto, x, p.alvos),
+    opcoes: ok.map((e) => ({ letra: e.letra, texto: preencher(e.texto, x, p.alvos), chance: e.sorteio ? chanceDaEscolha(e.sorteio.base, valorAtributo(x, e.sorteio.atributo, p.alvos)) : null })),
+  }, x.mem) ?? null;
+  const esc: Escolha = (letra ? ok.find((e) => e.letra === letra) : undefined)
+    ?? (I.dados.cenario === 'avancar' ? (m.escolhas.find((e) => e.letra === m.delegado) ?? ok[0]) : ok[x.rng.int(0, ok.length - 1)]);
   let efs = esc.efeitos;
   let sorteio = '';
   if (esc.sorteio) {
@@ -631,8 +641,11 @@ function coletiva(x: Ctx, proximo: ProximoJogo, dias: number, fase: Fase, crise:
     if (!p) continue;
     const respostas = itens(x, 'respostas').filter((r) => r.pergunta === p.item.id);
     if (!respostas.length) continue;
-    const assessoria = x.mem.imprensa!.dados.cenario === 'avancar';
-    const r = assessoria ? (respostas.find((y) => y.tom === 'Humildade') ?? respostas[0]) : respostas[x.rng.int(0, respostas.length - 1)];
+    const J = doJogador(x);
+    const pedido = J?.coletiva?.({ assunto, pergunta: preencher(p.item.texto, xx, {}, { jogador: p.jogador?.nome ?? '—' }), respostas: respostas.map((y) => ({ tom: y.tom!, texto: preencher(y.texto, xx, {}) })), ultimosTons: st.tons.slice(-3) }, x.mem) ?? null;
+    const escolhida = pedido ? respostas.find((y) => y.tom === pedido.tom) : undefined;
+    const assessoria = escolhida ? pedido!.assessoria : x.mem.imprensa!.dados.cenario === 'avancar';
+    const r = escolhida ?? (assessoria ? (respostas.find((y) => y.tom === 'Humildade') ?? respostas[0]) : respostas[x.rng.int(0, respostas.length - 1)]);
     const repetido = st.tons.length >= IMPRENSA.tomRepetido.seguidas - 1 && st.tons.slice(-(IMPRENSA.tomRepetido.seguidas - 1)).every((t) => t === r.tom);
     const ganho = assessoria ? IMPRENSA.assessoria : repetido ? IMPRENSA.tomRepetido.fator : 1;
     st.tons.push(r.tom!);

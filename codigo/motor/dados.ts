@@ -90,6 +90,8 @@ export interface Tecnico {
   ambicao: number | null;
   lealdade: number | null;
   historia: string;
+  /** Técnico do jogador (8ª fatia): não se aposenta e não assume outro clube sozinho. */
+  humano?: boolean;
 }
 
 export type NotaEstilo = 'Bloco' | 'Pressao' | 'Posse' | 'Verticalidade' | 'Risco' | 'Fisico';

@@ -126,6 +126,8 @@ export interface EntradaTime {
   vaia?: boolean;
   /** Ímpeto no início do jogo (eventos e imprensa, 7ª fatia); sem ele, 0. */
   impeto?: number;
+  /** Titulares escolhidos (clube do jogador, 8ª fatia): entram primeiro e sem rodízio; sem ele, os melhores 11. */
+  titulares?: string[];
 }
 
 /** O que a comissão e o treino do ciclo entregam ao motor (GDD-gestao 2 e 8). */

@@ -241,14 +241,14 @@ export function viradaPessoas(mem: Memoria, w: MundoPessoas, rng: Rng): ResumoPe
   const ct = (clube: string | null): number | null => (clube ? w.estruturaCT.get(clube) ?? null : null);
   const fora = new Set<Tecnico>();
   for (const t of w.tecnicos) {
-    if (rng.pct(chanceAposentarPessoa(t.idade, t.clubeId !== null))) fora.add(t);
+    if (!t.humano && rng.pct(chanceAposentarPessoa(t.idade, t.clubeId !== null))) fora.add(t);
     else if (t.trabalho) evoluirPessoa(t.trabalho, t.idade, ct(t.clubeId), rng);
   }
   for (const t of fora) {
     w.tecnicos.splice(w.tecnicos.indexOf(t), 1);
     r.tecnicosAposentados += 1;
     if (t.clubeId === null) continue;
-    const novo = w.tecnicos.filter((x) => x.clubeId === null).sort((a, b) => b.reputacao - a.reputacao)[0];
+    const novo = w.tecnicos.filter((x) => x.clubeId === null && !x.humano).sort((a, b) => b.reputacao - a.reputacao)[0];
     if (!novo) continue;
     Object.assign(novo, { clubeId: t.clubeId, clube: t.clube, liga: t.liga });
     const g = mem.gestao.get(t.clubeId);

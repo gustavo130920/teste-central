@@ -20,6 +20,7 @@ import type { ResumoMercado } from './mercado.ts';
 import { livresAntesDaBase, viradaContratos, viradaEuropaEContratos } from './mercado.ts';
 import type { FichaDiretoria } from '../gestao/diretoria.ts';
 import { humorMedioDoAno, viradaDiretoria } from './diretoria.ts';
+import type { ControleJogador } from './jogador.ts';
 
 export const VIRADA = {
   diasNoAno: 364,
@@ -81,6 +82,8 @@ export interface Mundo {
   diretoria?: FichaDiretoria[];
   /** Etapa 4, 7ª fatia: eventos e imprensa (o estado vive na memória); sem eles, cenário IA. */
   eventos?: DadosEventos;
+  /** Etapa 4, 8ª fatia: clube do jogador. */
+  jogador?: ControleJogador;
 }
 
 export interface BaseMundo {
@@ -123,10 +126,10 @@ function entradas(m: Mundo): Record<string, EntradaTime> {
   }));
 }
 
-export function jogarAno(m: Mundo, semente: number, adaptacao = true): Temporada {
+export function jogarAno(m: Mundo, semente: number, adaptacao = true, aoJogar?: (j: import('./temporada.ts').JogoDisputado) => void): Temporada {
   const t = simularTemporada({
     semente: semente * 1000 + m.ano, clubesPorLiga: m.clubesPorLiga, europeus: m.europeus, entradas: entradas(m), elencos: m.elencos, tatica: m.tatica,
-    libertadores: m.libertadores, folgasCopaDoBrasil: m.folgasCopaDoBrasil, memoria: m.memoria ?? undefined, adaptacao, comissoes: m.comissoes, nomes: m.nomes, comercial: m.comercial, diretoria: m.diretoria, tecnicos: m.tecnicos, ano: m.ano, eventos: m.eventos,
+    libertadores: m.libertadores, folgasCopaDoBrasil: m.folgasCopaDoBrasil, memoria: m.memoria ?? undefined, adaptacao, comissoes: m.comissoes, nomes: m.nomes, comercial: m.comercial, diretoria: m.diretoria, tecnicos: m.tecnicos, ano: m.ano, eventos: m.eventos, jogador: m.jogador, aoJogar,
     mercado: m.empresarios && m.comissoes ? {
       ano: m.ano, clubes: m.clubes, europeus: m.europeus, livres: m.livres, livreDesde: m.livreDesde, libertadores: m.libertadores.flat(),
       empresarios: m.empresarios, reduzidas: m.comercial?.reduzidas ?? [],
