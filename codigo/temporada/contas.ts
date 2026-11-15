@@ -8,8 +8,10 @@ import {
 } from '../gestao/financas.ts';
 import { quedaMoral } from '../gestao/comissao.ts';
 import type { Memoria } from './memoria.ts';
+import { folhaDoClube } from './mercado.ts';
 
-const folhaMil = (mem: Memoria, id: string): number => (mem.elencos[id] ?? []).reduce((s, j) => s + j.salario, 0);
+// Com o mercado (5ª fatia), os empréstimos dividem o salário entre origem e destino.
+const folhaMil = (mem: Memoria, id: string): number => folhaDoClube(mem, id);
 const comissaoMil = (mem: Memoria, id: string): number => (mem.gestao.get(id)?.comissao.profissionais ?? []).reduce((s, p) => s + p.salario, 0);
 const niveisAcima = (c: Conta, clube: Clube): number => Math.max(0, (clube.estruturaCT ?? c.ctInicial) - c.ctInicial) + Math.max(0, (clube.estruturaBase ?? c.baseInicial) - c.baseInicial);
 
@@ -129,7 +131,7 @@ export function viradaContas(mem: Memoria, w: MundoContas): ResumoFinancas {
     const receita = receitaDe(c.ano);
     const custo = custoDe(c.ano);
     if (c.caixa < 0) resumo.negativos.push(c.clubeId);
-    c.historico.push({ ano: w.ano, perfil: c.perfil, receita, custo, resultado: receita - custo, caixa: c.caixa, divida: c.divida, folha: c.ano.folha, vendas: 0, safNova: false, saf: !!c.saf, mudouPerfil: null, lanc: { ...c.ano } });
+    c.historico.push({ ano: w.ano, perfil: c.perfil, receita, custo, resultado: receita - custo + c.ano.vendas - c.ano.compras - c.ano.comissoes, caixa: c.caixa, divida: c.divida, folha: c.ano.folha, vendas: receita ? c.ano.vendasCrias / receita : 0, safNova: false, saf: !!c.saf, mudouPerfil: null, lanc: { ...c.ano } });
   }
   // 3. Os 3 últimos da Série B: TV × 0,75 no ano seguinte.
   const b = (w.tabelas['serie-b'] ?? []).map((l) => l.clube);
@@ -139,7 +141,7 @@ export function viradaContas(mem: Memoria, w: MundoContas): ResumoFinancas {
     const k = clube(c.clubeId);
     const h = c.historico[c.historico.length - 1];
     const receita = h.receita;
-    const candidato = perfilPelaCondicao(c, { reputacao: k.reputacao, torcida: k.torcidaTamanho ?? 10, base: k.estruturaBase ?? 10, receitaBaixa: receita <= corte, vendas: 0 }, w.ano, receita);
+    const candidato = perfilPelaCondicao(c, { reputacao: k.reputacao, torcida: k.torcidaTamanho ?? 10, base: k.estruturaBase ?? 10, receitaBaixa: receita <= corte, vendas: c.historico.slice(-3).reduce((a, x) => a + x.vendas, 0) / Math.min(3, c.historico.length) }, w.ano, receita);
     const de = andarPerfil(c, candidato);
     if (de) { resumo.perfis.push({ clube: c.clubeId, de, para: c.perfil }); h.mudouPerfil = c.perfil; k.perfil = c.perfil; }
     const p = posicao.get(c.clubeId);

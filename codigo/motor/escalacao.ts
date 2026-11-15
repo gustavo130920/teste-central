@@ -97,7 +97,7 @@ export function montarTime(indice: 0 | 1, ent: EntradaTime, tatica: Tatica, rng:
   const onze = pouparCansados(escolherOnze(ent.elenco, com), ent.elenco, com, new Set(ent.poupados ?? []));
   const ligacao = ligarSemBola(com.map((p) => ({ pos: p.posicao, zona: zonaDeCodigo(p.zona) })), sem);
   const escalados: Escalado[] = onze.map((j, i) => {
-    if (!j) throw new Error(`${ent.clube.id}: faltou jogador para ${com[i].posicao}`);
+    if (!j) throw new Error(`${ent.clube.id}: faltou jogador para ${com[i].posicao} (${ent.elenco.length} disponíveis, ${ent.elenco.filter((x) => x.posicao === 'GOL').length} goleiros)`);
     return novoEscalado(j, indice, com[i].posicao, zonaDeCodigo(com[i].zona), zonaDeCodigo(sem[ligacao[i]].zona), rng, classico, ent.condicao, ent.moral);
   });
   const goleiro = escalados.find((e) => e.j.posicao === 'GOL');

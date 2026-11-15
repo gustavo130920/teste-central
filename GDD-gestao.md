@@ -270,7 +270,7 @@ Exemplos: Trabalho 95 dá 66% de bem e 3% de mal; 50 dá 35% e 25%; 15 dá 11% e
 |---|---|
 | Jovens por safra | `3 + estrutura da base ÷ 5`, arredondado para baixo |
 | Idade | 16 ou 17 |
-| Potencial médio | `8 + estrutura da base × 0,2 + Captação × 0,15`, ± 4 |
+| Potencial médio | `7 + estrutura da base × 0,2 + Captação × 0,15`, ± 4 (8 → 7 em 14/11/2026) |
 | Joia (Pot 17 ou mais) | `2% + (estrutura da base + Captação) × 0,05%` por jovem |
 | Nota inicial | Pot − 4 a Pot − 7 |
 | Perfil | Sorteado entre os 4, em partes iguais |
@@ -685,10 +685,10 @@ CT 15 ou mais soma 10 pontos na chance de +1. A Reputação segue a regra do té
 
 **Estrutura.** Na virada, sobe 1 nível de CT ou base se o caixa for maior que 50% da receita e cobrir o custo. Formador prioriza a base; os demais, o CT.
 
-**Dívida (Gustavo, 13/11/2026).** Com caixa negativo no fim do mês, pede empréstimo para zerar o caixa, até 30% da receita. Na virada, depois da estrutura, amortiza o caixa acima de 50% da receita.
+**Dívida (Gustavo, 13/11/2026).** Com caixa negativo no fim do mês, pede empréstimo para zerar o caixa, até 30% da receita. Na virada, depois da estrutura, amortiza o caixa acima de 200% da receita (50% → 200% em 15/11/2026).
 
 ### Europa
-**Clubes.** 16, com elenco e técnico próprios, sem comissão e sem finanças além de orçamento e teto de folha. A Força (1 a 20) vira a média das 11 melhores notas, mudando no máximo 1 por ano.
+**Clubes.** 16, com elenco e técnico próprios, sem comissão e sem finanças além de orçamento e teto de folha. A Força (1 a 20) é a da ficha mais a variação da média das 11 melhores notas desde o ano 0, mudando no máximo 1 por ano (14/11/2026).
 
 **Champions e Mundial.** Em cada jogo da Champions, o mais forte vence com chance de `50% + diferença de Força × 6%`, entre 15% e 85%. O placar é sorteado para as notícias. No Mundial, roda o motor completo, e os atributos do técnico europeu vêm da Reputação.
 
@@ -701,14 +701,14 @@ CT 15 ou mais soma 10 pontos na chance de +1. A Reputação segue a regra do té
 
 **Renovação anual.**
 1. Evolução pela seção 5, com treino e comissão × 1,0. Titulares contam 50% ou mais dos minutos.
-2. Com 31 anos ou mais, 50% de chance de sair e virar livre, até o elenco ficar com 26.
-3. Com menos de 26, o gerador cria jogadores de 18 a 28 anos com nota Força ± 3. Um por clube, por ano, é jovem com Pot igual à Força + 2.
+2. Com 31 anos ou mais, 50% de chance de sair e virar livre (sempre; o gerador repõe até 26; 14/11/2026).
+3. Com menos de 26, o gerador cria jogadores de 18 a 28 anos com nota Força ± 3. Um por clube, por ano, é jovem com Pot igual à Força (Força + 2 → Força em 15/11/2026).
 
 ### Gerador em código (longo prazo)
 | Item | Regra |
 |---|---|
 | Livres | A cada virada, completa até 30 jogadores, 15 técnicos e 36 profissionais; nível de 6 a 14, como os lotes iniciais |
-| Saída do mundo | Livre há 26 semanas com nota até 9, ou jovem dispensado sem clube em 13 semanas, sai do jogo |
+| Saída do mundo | Livre há 26 semanas com nota até 9 sai do jogo; jovem que não sobe da base até os 20 sai do jogo na hora, sem virar livre (14/11/2026) |
 | Nomes | `dados/elencos/_nomes.md`, sem repetir ativos |
 | Semente | Própria de cada carreira: o mundo inicial é igual para todos e depois diverge |
 

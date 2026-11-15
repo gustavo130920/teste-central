@@ -14,6 +14,9 @@ import { criarRng, semearDeTexto } from '../motor/rng.ts';
 import type { Comercial } from '../gestao/financas.ts';
 import type { ResumoFinancas } from './contas.ts';
 import { fasesDasCopas, viradaContas } from './contas.ts';
+import type { Empresario } from '../gestao/mercado.ts';
+import type { ResumoMercado } from './mercado.ts';
+import { livresAntesDaBase, viradaContratos, viradaEuropaEContratos } from './mercado.ts';
 
 export const VIRADA = {
   diasNoAno: 364,
@@ -41,6 +44,8 @@ export interface Resumo {
   safra?: number;
   /** Etapa 4, 4ª fatia: finanças dos brasileiros. */
   financas?: ResumoFinancas;
+  /** Etapa 4, 5ª fatia: mercado do ano e contratos da virada. */
+  mercado?: ResumoMercado;
 }
 
 export interface Mundo {
@@ -67,6 +72,8 @@ export interface Mundo {
   semente: number;
   /** Etapa 4, 4ª fatia: fichas comerciais (as contas vivem na memória). */
   comercial?: Comercial;
+  /** Etapa 4, 5ª fatia: empresários (o mercado vive na memória). */
+  empresarios?: Empresario[];
 }
 
 export interface BaseMundo {
@@ -78,6 +85,7 @@ export interface BaseMundo {
   livres?: Jogador[];
   profissionaisLivres?: Profissional[];
   comercial?: Comercial;
+  empresarios?: Empresario[];
 }
 
 export function criarMundo(base: BaseMundo): Mundo {
@@ -94,7 +102,7 @@ export function criarMundo(base: BaseMundo): Mundo {
     europeus: clubes.filter((c) => c.liga === 'europa').map((c) => c.id),
     libertadores: [lib.brasil, lib.argentina, lib.colombia, lib.chile], folgasCopaDoBrasil: [...ANO1.folgasCopaDoBrasil],
     memoria: null, torcidaPontos: new Map(), anosSemLibertadores: new Map(), historico: [],
-    livres, profissionaisLivres, livreDesde: new Map(livres.map((j) => [j.id, { ano: 0, dispensado: false }])), nomes, semente: 0, comercial: base.comercial,
+    livres, profissionaisLivres, livreDesde: new Map(livres.map((j) => [j.id, { ano: 0, dispensado: false }])), nomes, semente: 0, comercial: base.comercial, empresarios: base.empresarios,
   };
 }
 
@@ -111,6 +119,10 @@ export function jogarAno(m: Mundo, semente: number, adaptacao = true): Temporada
   const t = simularTemporada({
     semente: semente * 1000 + m.ano, clubesPorLiga: m.clubesPorLiga, europeus: m.europeus, entradas: entradas(m), elencos: m.elencos, tatica: m.tatica,
     libertadores: m.libertadores, folgasCopaDoBrasil: m.folgasCopaDoBrasil, memoria: m.memoria ?? undefined, adaptacao, comissoes: m.comissoes, nomes: m.nomes, comercial: m.comercial,
+    mercado: m.empresarios && m.comissoes ? {
+      ano: m.ano, clubes: m.clubes, europeus: m.europeus, livres: m.livres, livreDesde: m.livreDesde, libertadores: m.libertadores.flat(),
+      empresarios: m.empresarios, reduzidas: m.comercial?.reduzidas ?? [],
+    } : undefined,
   });
   m.memoria = t.memoria;
   // A memória guarda os elencos vivos (evolução, subidas, aposentadorias).
@@ -194,18 +206,28 @@ export function virar(m: Mundo, t: Temporada): Resumo {
     const copas = fasesDasCopas(t.jogos, (id) => t.copas.find((c) => c.id === id)?.campeao() ?? null);
     financas = viradaContas(m.memoria, { ano: m.ano, clubes: m.clubes, tabelas: t.tabelas, copas, rng: criarRng(semearDeTexto(`${m.semente}-financas-${m.ano}`)) });
   }
-  // 6. Pessoas e 8. Reposição (etapa 4, 3ª fatia; só com a Gestão).
-  let pessoas: ResumoPessoas | undefined;
+  // 6. Pessoas: antes, o mercado (5ª fatia) devolve os emprestados, muda os pré-contratos e solta os contratos vencidos.
   const mem = m.memoria;
+  const mercado = mem?.mercado;
+  const contratos = mercado ? viradaContratos(mem!) : null;
+  let pessoas: ResumoPessoas | undefined;
   const joias = mem?.evo.joias;
   const safra = mem?.evo.safra;
   if (mem && mem.gestao.size) {
-    const w = { ano: m.ano, tecnicos: m.tecnicos, tatica: m.tatica, livres: m.livres, profissionaisLivres: m.profissionaisLivres, livreDesde: m.livreDesde, estruturaCT: new Map(m.clubes.map((c) => [c.id, c.estruturaCT])) };
+    const w = { ano: m.ano, tecnicos: m.tecnicos, tatica: m.tatica, livres: m.livres, profissionaisLivres: m.profissionaisLivres, livreDesde: m.livreDesde, estruturaCT: new Map(m.clubes.map((c) => [c.id, c.estruturaCT])),
+      antesDasSubidas: mercado ? (livres: Jogador[]) => livresAntesDaBase(mem, livres, criarRng(semearDeTexto(`${m.semente}-livres-${m.ano}`))) : undefined };
     pessoas = viradaPessoas(mem, w, criarRng(semearDeTexto(`${m.semente}-pessoas-${m.ano}`)));
     m.livres = w.livres;
     m.profissionaisLivres = w.profissionaisLivres;
     mem.evo.joias = 0;
     mem.evo.safra = 0;
+  }
+  // 7. Europa (5ª fatia): renovação dos elencos e Força; contrato para quem subiu da base.
+  let resumoMercado: ResumoMercado | undefined;
+  if (mem && mercado && contratos) {
+    mercado.livres = m.livres;
+    const eu = viradaEuropaEContratos(mem, Object.values(mem.elencos).flat(), criarRng(semearDeTexto(`${m.semente}-europa-${m.ano}`)));
+    resumoMercado = { ...contratos, ...eu, ano: { ...mercado.contagem }, transferencias: mercado.transferencias.filter((x) => x.ano === m.ano) };
   }
   // 9. Ano novo.
   m.clubesPorLiga = { ...m.clubesPorLiga, 'serie-a': [...a.slice(0, -v.trocas), ...promovidos], 'serie-b': [...rebaixados, ...b.slice(v.trocas)] };
@@ -216,7 +238,7 @@ export function virar(m: Mundo, t: Temporada): Resumo {
   m.libertadores = libertadores;
   m.folgasCopaDoBrasil = folgas;
   if (m.memoria) novoAnoMemoria(m.memoria);
-  const resumo: Resumo = { ano: m.ano, campeoes, rebaixados, promovidos, libertadores, folgasCopaDoBrasil: folgas, reputacao, torcida, pessoas, joias, safra, financas };
+  const resumo: Resumo = { ano: m.ano, campeoes, rebaixados, promovidos, libertadores, folgasCopaDoBrasil: folgas, reputacao, torcida, pessoas, joias, safra, financas, mercado: resumoMercado };
   m.historico.push(resumo);
   m.ano += 1;
   return resumo;

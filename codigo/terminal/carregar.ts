@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import type { Clube, FraseNarracao, Jogador, Profissional, Tatica, Tecnico } from '../motor/dados.ts';
 import type { EntradaTime } from '../motor/tipos.ts';
 import type { Comercial } from '../gestao/financas.ts';
+import type { Empresario } from '../gestao/mercado.ts';
 
 const GERADO = join(dirname(fileURLToPath(import.meta.url)), '..', 'gerado');
 const ler = <T>(arq: string): T => JSON.parse(readFileSync(join(GERADO, arq), 'utf8')) as T;
@@ -21,6 +22,8 @@ export interface Base {
   profissionaisLivres: Profissional[];
   /** Finanças e comercial (etapa 4, 4ª fatia). */
   comercial: Comercial;
+  /** Empresários (etapa 4, 5ª fatia). */
+  empresarios: Empresario[];
 }
 
 export function carregarBase(): Base {
@@ -34,6 +37,7 @@ export function carregarBase(): Base {
     livres: ler<Jogador[]>('livres.json'),
     profissionaisLivres: ler<{ livres: Profissional[] }>('comissao.json').livres,
     comercial: ler<Comercial>('comercial.json'),
+    empresarios: ler<Empresario[]>('empresarios.json'),
   };
 }
 

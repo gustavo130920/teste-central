@@ -107,7 +107,7 @@ test('perfil: condição do GDD-gestao 11, muda só em 2 viradas seguidas', () =
   assert.equal(perfilPelaCondicao(em, { ...x, torcida: 8 }, 5, 20), 'Tradicional médio');
 });
 
-test('SAF: aporte, corte de dívida e participação; amortização acima de 50% da receita; custo da obra', () => {
+test('SAF: aporte, corte de dívida e participação; amortização acima de 200% da receita; custo da obra', () => {
   const rng = criarRng(3);
   let entrou = 0;
   for (let i = 0; i < 400; i++) {
@@ -120,9 +120,10 @@ test('SAF: aporte, corte de dívida e participação; amortização acima de 50%
     }
   }
   assert.ok(entrou > 60 && entrou < 140, `${entrou}`); // crítica: 50% × 50%
-  const r = criarConta(ficha({ caixa: 30, divida: 8 }), clube);
+  const r = criarConta(ficha({ caixa: 50, divida: 8 }), clube);
   assert.equal(amortizar(r, 20), 8);
-  assert.equal(r.caixa, 22);
+  assert.equal(r.caixa, 42);
+  assert.equal(amortizar(criarConta(ficha({ caixa: 40, divida: 8 }), clube), 20), 0);
   assert.ok(Math.abs(custoObra(6) - 5.4) < 1e-9);
   assert.equal(FINANCAS.meses * FINANCAS.diasMes, 364);
 });

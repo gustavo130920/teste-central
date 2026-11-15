@@ -87,9 +87,9 @@ export const FINANCAS = {
   } as Record<string, Record<string, number>>,
   juros: 0.004,
   jurosNegativo: 2,
-  /** Decisão do Gustavo (13/11/2026): a IA pede empréstimo para zerar o caixa negativo, até 30% da receita, e amortiza o caixa acima de 50% da receita. */
+  /** Decisão do Gustavo (13/11/2026): a IA pede empréstimo para zerar o caixa negativo, até 30% da receita, e amortiza o caixa acima de 200% da receita (50% → 200% em 15/11/2026: o caixa das vendas ia todo para a dívida). */
   emprestimo: 0.3,
-  amortizarAcima: 0.5,
+  amortizarAcima: 2,
   /** Folha atrasada (PROVISORIO: mês que fecha com caixa negativo); moral −M (10) por mês a partir de 2; rescisão possível com 3 (mercado, 5ª fatia). */
   atraso: { moralApos: 2, moral: 10, rescisao: 3 },
   /** GDD-gestao 8 e 11 (subida de estrutura da IA na virada, aprovada para esta fatia). */
@@ -108,8 +108,10 @@ export const FINANCAS = {
   },
   /** GDD-gestao 11: perfil muda quando a condição vale em 2 viradas seguidas. Emergentes iniciais contam aporte no ano 0 (PROVISORIO). */
   perfil: { emergente: { anos: 5, torcida: 12 }, endividado: { reputacao: 15, divida: 1 }, rico: { reputacao: 16, torcida: 15, divida: 0.5 }, formador: { base: 14, vendas: 0.3 }, pequeno: 1 / 3 },
-  /** PROVISORIO (gerador-comercial): orçamento = 50% do caixa, mínimo 2% da receita, 0 com caixa negativo; Gigante endividado até 2%. */
-  orcamento: { caixa: 0.5, minimo: 0.02, endividado: 0.02 },
+  /** PROVISORIO (gerador-comercial): orçamento = 75% do caixa (50% → 75% em 15/11/2026: 97% dos reforços cortados pelo orçamento), mínimo 2% da receita, 0 com caixa negativo; Gigante endividado até 2%. */
+  orcamento: { caixa: 0.75, minimo: 0.02, endividado: 0.02 },
+  /** PROVISORIO: teto de folha também limitado a esta fração da receita (0,7 → 0,85 em 14/11/2026: com 0,7 todos lucravam). */
+  tetoReceita: 0.85,
   teto: { 'Gigante rico': 1.2, Emergente: 1.3, 'Tradicional médio': 1.1, Formador: 1.1, 'Pequeno sobrevivente': 1.025, 'Gigante endividado': 0.95 } as Record<string, number>,
 };
 
@@ -118,9 +120,11 @@ export interface Lancamentos {
   tv: number; patrocinio: number; bilheteria: number; socios: number; premiacao: number;
   folha: number; comissao: number; tecnico: number; manutencao: number; juros: number;
   obras: number; aporte: number; emprestimo: number; amortizacao: number;
+  /** Mercado (5ª fatia): compras e vendas (R$ mi), vendas de crias da casa e comissões de empresários. */
+  compras: number; vendas: number; vendasCrias: number; comissoes: number;
   mesesNegativo: number; mesesAtraso: number; mesesRescisao: number;
 }
-const zerados = (): Lancamentos => ({ tv: 0, patrocinio: 0, bilheteria: 0, socios: 0, premiacao: 0, folha: 0, comissao: 0, tecnico: 0, manutencao: 0, juros: 0, obras: 0, aporte: 0, emprestimo: 0, amortizacao: 0, mesesNegativo: 0, mesesAtraso: 0, mesesRescisao: 0 });
+const zerados = (): Lancamentos => ({ tv: 0, patrocinio: 0, bilheteria: 0, socios: 0, premiacao: 0, folha: 0, comissao: 0, tecnico: 0, manutencao: 0, juros: 0, obras: 0, aporte: 0, emprestimo: 0, amortizacao: 0, compras: 0, vendas: 0, vendasCrias: 0, comissoes: 0, mesesNegativo: 0, mesesAtraso: 0, mesesRescisao: 0 });
 
 export const receitaDe = (l: Lancamentos): number => l.tv + l.patrocinio + l.bilheteria + l.socios + l.premiacao;
 export const custoDe = (l: Lancamentos): number => l.folha + l.comissao + l.tecnico + l.manutencao + l.juros;
@@ -365,10 +369,11 @@ export function orcamentoETeto(c: Conta, receita: number, folhaMil: number): voi
   let orc = c.caixa < 0 ? 0 : Math.max(c.caixa * o.caixa, receita * o.minimo);
   if (c.perfil === 'Gigante endividado') orc = Math.min(orc, receita * o.endividado);
   c.orcamento = orc;
-  c.teto = folhaMil * (FINANCAS.teto[c.perfil] ?? 1.1);
+  // PROVISORIO (5ª fatia): o teto também fica preso a 70% da receita (sem isso, teto e folha sobem juntos todo ano).
+  c.teto = Math.min(folhaMil * (FINANCAS.teto[c.perfil] ?? 1.1), (receita * FINANCAS.tetoReceita * 1000) / FINANCAS.meses);
 }
 
-/** Amortiza o caixa acima de 50% da receita (Gustavo, 13/11/2026). */
+/** Amortiza o caixa acima de `amortizarAcima` (200%) da receita (Gustavo, 13/11/2026; 50% → 200% em 15/11/2026). */
 export function amortizar(c: Conta, receita: number): number {
   const paga = Math.min(Math.max(0, c.caixa - receita * FINANCAS.amortizarAcima), c.divida);
   if (paga <= 0) return 0;

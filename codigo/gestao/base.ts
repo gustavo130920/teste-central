@@ -8,11 +8,12 @@ import { PERFIL, chavesDe, grupoDaPosicao } from './evolucao.ts';
 export const BASE = {
   jovens: { min: 3, div: 5 },
   idade: [16, 17],
-  pot: { base: 8, estrutura: 0.2, captacao: 0.15, variacao: 4, teto: 16 },
-  /** Joia: `2% + (estrutura da base + Captação) × 0,05%` por jovem (peso 0,2 → 0,05 em 13/11/2026, GDD-gestao 12); Pot 18 a 20 (17-19 → 18-20 em 13/11/2026). PROVISORIO: o sorteio comum fica até 16. */
-  joia: { base: 2, peso: 0.05, pot: [18, 20] },
+  /** Pot comum: base 8 → 7 em 14/11/2026 (nota média dos elencos +0,80 → +0,24 com a joia 17-19). */
+  pot: { base: 7, estrutura: 0.2, captacao: 0.15, variacao: 4, teto: 16 },
+  /** Joia: `2% + (estrutura da base + Captação) × 0,05%` por jovem (peso 0,2 → 0,05 em 13/11/2026, GDD-gestao 12); Pot 17 a 19 (17-19 → 18-20 em 13/11/2026, de volta a 17-19 em 14/11/2026, com o mercado). PROVISORIO: o sorteio comum fica até 16. */
+  joia: { base: 2, peso: 0.05, pot: [17, 19] },
   nota: [4, 7],
-  /** Aos 20 anos, quem não subiu sai livre. */
+  /** Aos 20 anos, quem não subiu sai do mundo na hora (decisão de 14/11/2026). */
   prazo: 20,
   /** Europa e clubes sem o dado: estrutura da base 14, como a comissão (decisão de 13/11/2026). */
   semEstrutura: 14,
@@ -48,7 +49,8 @@ export const EVOLUCAO_ANUAL = {
   ct: { minimo: 15, bonus: 10 },
 } as const;
 
-export const REPOSICAO = { jogadores: 30, tecnicos: 15, profissionais: 36, nivel: [6, 14], idadeJogador: [19, 33], idadeTecnico: [38, 62], idadePro: [30, 60] } as const;
+/** PROVISORIO (5ª fatia): sai do mundo todo livre há uma virada inteira (saidaNota 20 = qualquer nota; o GDD pede até 9; com 9 sobravam 900 livres, com 12 sobravam 813). */
+export const REPOSICAO = { saidaNota: 20, jogadores: 30, tecnicos: 15, profissionais: 36, nivel: [6, 14], idadeJogador: [19, 33], idadeTecnico: [38, 62], idadePro: [30, 60] } as const;
 
 const limitar = (v: number, a = 1, b = 20): number => Math.max(a, Math.min(b, Math.round(v)));
 const sortear = <T>(xs: readonly T[], rng: Rng): T => xs[rng.int(0, xs.length - 1)];

@@ -8,6 +8,7 @@ import {
 } from './parsers.ts';
 import { lerFichas, lerMarcas, lerReduzidas } from './comercial.ts';
 import type { Comercial } from '../gestao/financas.ts';
+import { lerEmpresarios } from './empresarios.ts';
 
 const raiz = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const DADOS = join(raiz, 'dados');
@@ -73,6 +74,9 @@ for (const c of clubes.filter((x) => !x.reserva)) {
   if (![...comercial.fichas, ...comercial.reduzidas].some((f) => f.clubeId === c.id)) avisos.push(`${c.id}: sem ficha comercial`);
 }
 
+// Empresários (gerador-empresarios): carteira ligada ao jogador pelo clube e pelo nome curto.
+const empresarios = ['brasil', 'america-do-sul', 'europa'].flatMap((r) => lerEmpresarios(ler('empresarios', `${r}.md`), clubes, elencos, rel));
+
 const tatica: Tatica = {
   estilos: lerEstilos(ler('tatica', 'estilos.md'), rel),
   formacoes: lerFormacoes(ler('tatica', 'formacoes.md'), rel),
@@ -107,6 +111,7 @@ gravar('tatica.json', tatica);
 gravar('comissao.json', { clubes: comissoes, livres: comissaoLivre });
 gravar('narracao.json', narracao);
 gravar('comercial.json', comercial);
+gravar('empresarios.json', empresarios);
 const contagem = {
   clubesCompetindo: competindo.length,
   clubesReserva: clubes.length - competindo.length,
@@ -126,6 +131,8 @@ const contagem = {
   fichasComerciais: comercial.fichas.length,
   fichasReduzidas: comercial.reduzidas.length,
   marcas: comercial.marcas.length,
+  empresarios: empresarios.length,
+  clientes: empresarios.reduce((s, e) => s + e.clientes.length, 0),
 };
 gravar('_relatorio.json', { aviso: 'Gerado por conversor/converter.ts. Não edite gerado/ à mão.', contagem, problemas: rel.problemas, avisos });
 

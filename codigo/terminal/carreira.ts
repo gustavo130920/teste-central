@@ -4,6 +4,7 @@
 import { APOSENTADORIA, BASE, REPOSICAO } from '../gestao/base.ts';
 import { EVOLUCAO, PERFIL } from '../gestao/evolucao.ts';
 import { FINANCAS, PERFIS } from '../gestao/financas.ts';
+import { MERCADO } from '../gestao/mercado.ts';
 import { criarMundo, jogarAno, virar } from '../temporada/virada.ts';
 import { carregarBase } from './carregar.ts';
 
@@ -13,7 +14,7 @@ for (let i = 2; i < process.argv.length; i++) {
   const pedido = process.argv[++i] ?? '';
   const [caminho, valor] = pedido.split('=');
   const partes = caminho.split('.');
-  let alvo: Record<string, unknown> = { EVOLUCAO, BASE, APOSENTADORIA, PERFIL, REPOSICAO, FINANCAS };
+  let alvo: Record<string, unknown> = { EVOLUCAO, BASE, APOSENTADORIA, PERFIL, REPOSICAO, FINANCAS, MERCADO };
   for (const p of partes.slice(0, -1)) alvo = (alvo?.[p] ?? null) as Record<string, unknown>;
   const chave = partes[partes.length - 1];
   const novo = Number(valor);
@@ -94,6 +95,13 @@ for (let i = 0; i < anos; i++) {
     console.log(`  Finanças: caixa negativo ${f.negativos.length} (${f.negativos.map(n).join(', ') || 'nenhum'}) · SAF nova ${f.safs.map(n).join(', ') || 'nenhuma'}` +
       ` · perfil ${f.perfis.map((x) => `${n(x.clube)} ${x.de} → ${x.para}`).join(', ') || 'sem mudança'} · obras ${f.obras} · cotas renovadas ${f.cotas}`);
   }
+  const mk = r.mercado;
+  if (mk) {
+    const t = mk.transferencias;
+    const conta = (f: (x: (typeof t)[number]) => boolean) => t.filter(f).length;
+    console.log(`  Mercado: compras ${conta((x) => x.tipo === 'compra')} (europeias ${conta((x) => x.europa)}), livres ${conta((x) => x.tipo === 'livre')}, empréstimos ${conta((x) => x.tipo === 'emprestimo')}, pré-contratos ${conta((x) => x.tipo === 'pre-contrato')}` +
+      ` · R$ ${t.reduce((a, x) => a + x.valor, 0).toFixed(0)} mi · vencidos ${mk.vencidos} · Europa: saíram ${mk.saidasEuropa}, gerados ${mk.geradosEuropa}`);
+  }
   for (const [k, c] of Object.entries(r.campeoes)) {
     const x = titulos.get(c) ?? {};
     x[k] = (x[k] ?? 0) + 1;
@@ -133,6 +141,24 @@ if (m.memoria?.gestao.size) {
   console.log(`  Elencos: de ${Math.min(...tamanhos)} a ${Math.max(...tamanhos)} jogadores · base ${[...m.memoria.base.values()].reduce((a, b) => a + b.length, 0)} jovens`);
 }
 
+const mm = m.memoria?.mercado;
+if (mm) {
+  const c = mm.contagem;
+  const t = mm.transferencias;
+  const por = (x: number): string => (x / anos).toFixed(1);
+  const vm = mm.valorMedio;
+  console.log('\nMercado (GDD-gestao 12)');
+  console.log(`  Compras europeias concluídas na América do Sul por ano: ${por(c.europeias)} (meta 12, 8 a 18) · propostas ${por(c.propostasEuropa)} (GDD ~24)`);
+  console.log(`  Valor médio dos jogadores após 10 anos: ${vm.length > 10 ? `${((vm[10] / vm[0]) * 100).toFixed(0)}%` : '-'} (meta 100%, 85% a 115%) · ano 1 R$ ${vm[0]?.toFixed(2)} mi → ano ${vm.length} R$ ${vm[vm.length - 1]?.toFixed(2)} mi`);
+  console.log(`  Por ano: compras ${por(c.compras)}, livres ${por(c.livres)}, empréstimos ${por(c.emprestimos)}, pré-contratos ${por(c.preContratos)}, renovações ${por(c.renovacoes)} (falhas ${por(c.renovacoesFalhas)}), vencidos ${por(c.vencidos)}`);
+  console.log(`  Recusas: do clube ${por(c.recusasClube)}, do jogador ${por(c.recusasJogador)}, negociações fechadas ${por(c.fechadas)} · aumentos para ficar ${por(c.aumentos)} · quer sair ${por(c.querSair)} · blefes ${por(c.blefes)} (descobertos ${por(c.blefesDescobertos)}) · comissões R$ ${por(c.comissoes)} mi`);
+  const gasto = new Map<string, number>();
+  for (const x of t) if (x.valor) gasto.set(x.para, (gasto.get(x.para) ?? 0) + x.valor);
+  console.log(`  Maiores compradores (R$ mi em ${anos} anos): ${[...gasto].sort((a, b) => b[1] - a[1]).slice(0, 6).map(([k, v]) => `${n(k)} ${v.toFixed(0)}`).join(', ')}`);
+  const top = [...t].filter((x) => x.valor).sort((a, b) => b.valor - a.valor).slice(0, 5);
+  console.log(`  Maiores transferências: ${top.map((x) => `${x.de ? n(x.de) : 'livre'} → ${n(x.para)} R$ ${x.valor.toFixed(0)} mi (ano ${x.ano})`).join(' · ')}`);
+}
+
 if (m.memoria?.financas.size) {
   const contas = [...m.memoria.financas.values()];
   const inicial = new Map(base.comercial.fichas.map((x) => [x.clubeId, x]));
@@ -156,7 +182,7 @@ Finanças por perfil inicial (GDD-gestao 12; média das ${anos5} primeiras tempo
     const elegiveis = cs.filter((c) => !inicial.get(c.clubeId)!.saf);
     const saf10 = elegiveis.filter((c) => c.historico.slice(0, 10).some((h) => h.safNova)).length;
     console.log(`  ${perfil.padEnd(21)} (${cs.length}) dívida ${pc(med(hs.map((h) => h.divida / h.receita)))} da receita · caixa positivo ${pc(hs.filter((h) => h.caixa >= 0).length / hs.length)}` +
-      ` · resultado ${pc(med(hs.map((h) => h.resultado / h.receita)))} · folha ${pc(med(hs.map((h) => h.lanc.folha / h.receita)))} · SAF em 10 anos ${saf10} de ${elegiveis.length}` +
+      ` · resultado ${pc(med(hs.map((h) => h.resultado / h.receita)))} (operação ${pc(med(hs.map((h) => (h.receita - h.custo) / h.receita)))}, vendas ${pc(med(hs.map((h) => h.lanc.vendas / h.receita)))}, compras ${pc(med(hs.map((h) => (h.lanc.compras + h.lanc.comissoes) / h.receita)))}) · folha ${pc(med(hs.map((h) => h.lanc.folha / h.receita)))} · SAF em 10 anos ${saf10} de ${elegiveis.length}` +
       `
     meta: ${METAS[perfil]}`);
   }
@@ -172,3 +198,4 @@ Finanças por perfil inicial (GDD-gestao 12; média das ${anos5} primeiras tempo
   console.log(`  Soma dos 30 (R$ mi), ano 1 → ano ${anos}: receita ${soma(r1, 'receita')} → ${soma(rn, 'receita')} · caixa ${soma(r1, 'caixa')} → ${soma(rn, 'caixa')} · dívida ${soma(r1, 'divida')} → ${soma(rn, 'divida')}`);
   console.log(`  Folha ÷ receita, ano 1 → ano ${anos}: ${pc(med(r1.map((h) => h.lanc.folha / h.receita)))} → ${pc(med(rn.map((h) => h.lanc.folha / h.receita)))} · meses com folha atrasada (2+) por ano ${(todos.reduce((a, h) => a + h.lanc.mesesAtraso, 0) / anos).toFixed(1)} · com rescisão possível (3+) ${(todos.reduce((a, h) => a + h.lanc.mesesRescisao, 0) / anos).toFixed(1)}`);
 }
+

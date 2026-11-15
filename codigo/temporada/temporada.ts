@@ -20,6 +20,8 @@ import { novaSafra, periodoDeEvolucao, periodoDePerfil } from './pessoas.ts';
 import type { Comercial } from '../gestao/financas.ts';
 import { FINANCAS } from '../gestao/financas.ts';
 import { fecharMesContas, jogoNasContas } from './contas.ts';
+import type { ContextoMercado } from './mercado.ts';
+import { atualizarContexto, criarMercado, periodoDeMercado, registrarEscalaEuropa, semanaDeMercado } from './mercado.ts';
 
 export const LIGAS = ['serie-a', 'serie-b', 'argentina', 'colombia', 'chile'] as const;
 
@@ -71,6 +73,8 @@ export interface EntradaTemporada {
   nomes?: Nomes;
   /** Finanças e comercial (etapa 4, 4ª fatia); só no ano 1, com as comissões. */
   comercial?: Comercial;
+  /** Mercado (etapa 4, 5ª fatia); só com as comissões. */
+  mercado?: ContextoMercado;
 }
 
 export function simularTemporada(e: EntradaTemporada): Temporada {
@@ -81,6 +85,11 @@ export function simularTemporada(e: EntradaTemporada): Temporada {
     e.comissoes ? { comissoes: e.comissoes, entradas: e.entradas, tatica: e.tatica, nomes: e.nomes, comercial: e.comercial } : undefined);
   const ligaDe = (id: string): string[] => ligas.map((l) => e.clubesPorLiga[l]).find((cs) => cs.includes(id)) ?? [];
   const comGestao = memoria.gestao.size > 0;
+  if (comGestao && e.mercado) {
+    if (memoria.mercado) atualizarContexto(memoria.mercado, e.mercado);
+    else { memoria.mercado = criarMercado(e.mercado); registrarEscalaEuropa(memoria); }
+  }
+  const comMercado = !!memoria.mercado;
 
   const copas: Copa[] = [];
   if (e.europeus) {
@@ -153,6 +162,9 @@ export function simularTemporada(e: EntradaTemporada): Temporada {
     if (comGestao && dia % EVOLUCAO.periodoDias === 0) periodoDeEvolucao(memoria, rngDe(`evolucao-${dia}`));
     if (comGestao && dia % EVOLUCAO.perfilDias === 0) periodoDePerfil(memoria);
     // Fechamento do mês (GDD-gestao 7): 13 meses de 4 semanas.
+    // Mercado (GDD-gestao 6): valor, relatórios e renovações a cada 4 semanas; janelas e livres toda semana.
+    if (comMercado && dia % FINANCAS.diasMes === 0) periodoDeMercado(memoria, dia, rngDe(`mercado-periodo-${dia}`));
+    if (comMercado && dia % 7 === 0) semanaDeMercado(memoria, dia, rngDe(`mercado-semana-${dia}`));
     if (memoria.financas.size && dia % FINANCAS.diasMes === 0 && dia <= FINANCAS.diasMes * FINANCAS.meses) fecharMesContas(memoria, dia, (id) => e.entradas[id].clube);
   }
 

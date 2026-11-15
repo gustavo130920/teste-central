@@ -10,6 +10,7 @@
     "simular": "node terminal/cenarios.ts",
     "temporada": "node terminal/temporada.ts",
     "carreira": "node terminal/carreira.ts",
+    "sementes": "node terminal/sementes.ts",
     "tipos": "tsc --noEmit",
     "pretest": "node conversor/converter.ts",
     "test": "node --test testes/*.test.ts"

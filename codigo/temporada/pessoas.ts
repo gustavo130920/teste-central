@@ -119,6 +119,8 @@ export interface MundoPessoas {
   /** Ano em que ficou livre e se saiu da base (para a saída do mundo). */
   livreDesde: Map<string, { ano: number; dispensado: boolean }>;
   estruturaCT: Map<string, number | null>;
+  /** Mercado (5ª fatia): antes das subidas, completa os elencos com livres melhores que a base. Devolve quantos assinaram. */
+  antesDasSubidas?: (livres: Jogador[]) => number;
 }
 
 export interface ResumoPessoas {
@@ -134,12 +136,13 @@ export interface ResumoPessoas {
   saidasDoMundo: number;
   gerados: { jogadores: number; tecnicos: number; profissionais: number };
   livres: number;
+  livresAssinados: number;
 }
 
 export function viradaPessoas(mem: Memoria, w: MundoPessoas, rng: Rng): ResumoPessoas {
   const r: ResumoPessoas = {
     aposentados: [], novasCarreiras: 0, subiram: 0, liberados: 0, emergencias: 0, perfis: { bem: 0, mal: 0, nenhum: 0 },
-    tecnicosAposentados: 0, profissionaisAposentados: 0, tecnicosTrocados: [], saidasDoMundo: 0, gerados: { jogadores: 0, tecnicos: 0, profissionais: 0 }, livres: 0,
+    tecnicosAposentados: 0, profissionaisAposentados: 0, tecnicosTrocados: [], saidasDoMundo: 0, gerados: { jogadores: 0, tecnicos: 0, profissionais: 0 }, livres: 0, livresAssinados: 0,
   };
   const clubes = [...mem.gestao.keys()];
   const evo = (j: Jogador): EstadoEvolucao => mem.evolucao.get(j.id) ?? mem.evolucao.set(j.id, criarEvolucao(j)).get(j.id)!;
@@ -200,6 +203,8 @@ export function viradaPessoas(mem: Memoria, w: MundoPessoas, rng: Rng): ResumoPe
   });
   for (const a of r.aposentados) { mem.evolucao.delete(a.id); mem.jogadores.delete(a.id); w.livreDesde.delete(a.id); }
 
+  // Mercado: livres melhores que a base entram antes das subidas (decisão de 14/11/2026).
+  r.livresAssinados = w.antesDasSubidas?.(w.livres) ?? 0;
   // Subidas da base (IA) e saída aos 20.
   for (const c of clubes) {
     const g = mem.gestao.get(c)!;
@@ -212,10 +217,11 @@ export function viradaPessoas(mem: Memoria, w: MundoPessoas, rng: Rng): ResumoPe
     }
     for (const j of base.filter((x) => x.idade >= BASE.prazo)) {
       base.splice(base.indexOf(j), 1);
+      // Quem não subiu até os 20 sai do mundo na hora, sem virar livre (decisão de 14/11/2026; GDD pedia 13 semanas).
       j.clubeId = null;
-      w.livres.push(j);
-      w.livreDesde.set(j.id, { ano: w.ano, dispensado: true });
       r.liberados += 1;
+      r.saidasDoMundo += 1;
+      mem.evolucao.delete(j.id);
     }
     // Emergência (PROVISORIO): sem 2 goleiros nem jovem goleiro na base, assina o melhor goleiro livre.
     while (mem.elencos[c].filter((j) => j.posicao === 'GOL').length < BASE.goleirosMin) {
@@ -274,10 +280,10 @@ export function viradaPessoas(mem: Memoria, w: MundoPessoas, rng: Rng): ResumoPe
     return true;
   });
 
-  // Saída do mundo (PROVISORIO, sem mercado): livre desde a virada anterior com nota até 9, ou jovem dispensado da base.
+  // Saída do mundo (PROVISORIO): livre desde a virada anterior com nota até REPOSICAO.saidaNota (20 = todo livre); o dispensado da base já sai na subida.
   w.livres = w.livres.filter((j) => {
     const d = w.livreDesde.get(j.id);
-    const sai = d !== undefined && d.ano < w.ano && (j.nota <= 9 || d.dispensado);
+    const sai = d !== undefined && d.ano < w.ano && (j.nota <= REPOSICAO.saidaNota || d.dispensado);
     if (sai) { r.saidasDoMundo += 1; w.livreDesde.delete(j.id); mem.evolucao.delete(j.id); }
     else if (!d) w.livreDesde.set(j.id, { ano: w.ano, dispensado: false });
     return !sai;

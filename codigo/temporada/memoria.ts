@@ -20,6 +20,8 @@ import { Nomes } from '../gestao/base.ts';
 import type { Foco } from '../gestao/treino.ts';
 import type { Comercial, Conta, Marca } from '../gestao/financas.ts';
 import { criarConta } from '../gestao/financas.ts';
+import type { EstadoMercado } from './mercado.ts';
+import { quedaQuerSair, registrarNota } from './mercado.ts';
 
 export const ENTRE_JOGOS = {
   /** GDD-gestao 1: tipo de ciclo pelos dias até o próximo jogo. */
@@ -84,6 +86,8 @@ export interface Memoria {
   /** Etapa 4, 4ª fatia: conta de cada clube brasileiro e as marcas; vazio sem `comercial`. */
   financas: Map<string, Conta>;
   marcas: Marca[];
+  /** Etapa 4, 5ª fatia: mercado (null sem `mercado` na temporada). */
+  mercado: EstadoMercado | null;
 }
 
 /** Jogos e treino do clube nos períodos de 4 e de 13 semanas e no ano. */
@@ -167,6 +171,7 @@ export function criarMemoria(elencos: Record<string, Jogador[]>, clubes: string[
     evo: { joias: 0, safra: 0, chegouAoPot: [], pontos: 0, perdas: 0, ganhosMentais: 0 },
     financas: new Map((dados?.comercial?.fichas ?? []).filter((f) => dados!.entradas[f.clubeId]).map((f) => [f.clubeId, criarConta(f, dados!.entradas[f.clubeId].clube)])),
     marcas: dados?.comercial?.marcas ?? [],
+    mercado: null,
   };
 }
 
@@ -280,6 +285,9 @@ function cicloDeMoral(m: Memoria, g: ClubeGestao, elenco: Jogador[]): void {
     s.moral = repousar(s.moral);
     const queda = quedaPorMinutos(j, s.ciclosSemTitular, melhores, g.tecnico.temperamento);
     if (queda) s.moral = aplicar(s.moral, queda, pesos);
+    // Mercado: quem quer sair e teve a venda recusada perde 3 por ciclo (GDD-gestao 6).
+    const sair = quedaQuerSair(m, j.id);
+    if (sair) s.moral = aplicar(s.moral, sair, pesos);
   }
   const est = (id: string): EstadoJogador => m.jogadores.get(id)!;
   const grupo = moralDoGrupo(elenco, (id) => est(id).moral, (id) => est(id).titularidades, g.jogos);
@@ -388,7 +396,9 @@ function moralDepoisDoJogo(m: Memoria, g: ClubeGestao, clube: string, lado: 0 | 
     if (!relacionados.has(j.id)) continue;
     const e = jogaram.get(j.id);
     // Decisão do Gustavo (13/11/2026): a moral que muda dentro do jogo (gol, cartão, vaia) vale só naquele jogo.
-    const d = deltaDoJogo(j, { resultado, grande, nota: e ? notaFinal(e) : null, titular }, g.tecnico.temperamento);
+    const nota = e ? notaFinal(e) : null;
+    if (nota !== null) registrarNota(m, j.id, nota);
+    const d = deltaDoJogo(j, { resultado, grande, nota, titular }, g.tecnico.temperamento);
     s.moral = aplicar(s.moral, d, pesos);
   }
 }
