@@ -681,7 +681,7 @@ CT 15 ou mais soma 10 pontos na chance de +1. A Reputação segue a regra do té
 | Tradicional médio | Oferta até 110% | A partir de 110% |
 | Pequeno sobrevivente | Livres e empréstimos | A partir de 90% |
 
-**Renovação.** A partir de 12 meses do fim, a IA renova com titulares e com quem tem Pot 2 ou mais acima da nota. De 33 anos em diante, só contratos de 1 ano. Os demais saem no vencimento.
+**Renovação.** A partir de 12 meses do fim, a IA renova com titulares e com quem tem Pot 1 ou mais acima da nota (2 → 1 em 15/11/2026). De 33 anos em diante, só contratos de 1 ano. Os demais saem no vencimento.
 
 **Estrutura.** Na virada, sobe 1 nível de CT ou base se o caixa for maior que 50% da receita e cobrir o custo. Formador prioriza a base; os demais, o CT.
 

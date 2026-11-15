@@ -77,7 +77,8 @@ export const MERCADO = {
   janelas: [[1, 8], [26, 29]] as [number, number][],
   preContrato: 26,
   /** Renovação da IA a partir de 12 meses do fim: titulares e Pot 2+ acima da nota (GDD-gestao 11). */
-  renovar: { semanas: 52, pot: 2, veterano: 33 },
+  /** Renova titulares e quem tem Pot `pot`+ acima da nota (2 → 1 em 15/11/2026: sobravam 150 livres). `rotacao`: 1 = renova também a rotação (testado: nota média +0,91). */
+  renovar: { semanas: 52, pot: 1, veterano: 33, rotacao: 0 },
   /** Decisão do Gustavo (13/11/2026; PROVISORIO): empresta jovens até 21 com menos de 10% dos minutos; o destino paga 50% do salário. */
   emprestimo: { idade: 21, minutos: 0.1, salario: 0.5 },
   /** PROVISORIO: compra só quem melhora o titular mais fraco da posição em 1 ponto ou mais. */

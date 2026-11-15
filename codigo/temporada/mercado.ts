@@ -254,7 +254,8 @@ function renovacoes(mem: Memoria, semana: number, rng: Rng): void {
     for (const j of elenco) {
       const sem = semanasDeContrato(m, j, semana);
       if (sem === null || sem > M.renovar.semanas || m.renovacao.has(j.id) || m.preContratos.has(j.id) || emprestado(m, j.id)) continue;
-      const quer = papelNoElenco(elenco, j) === 'titular' || j.potencial >= j.nota + M.renovar.pot;
+      const papel = papelNoElenco(elenco, j);
+      const quer = papel === 'titular' || (M.renovar.rotacao > 0 && papel === 'rotacao') || j.potencial >= j.nota + M.renovar.pot;
       if (!quer) { m.renovacao.set(j.id, 'nao'); continue; }
       const ag = m.agenteDe.get(j.id);
       let pedido = pedidoSalarial(j.salario, referencia(mem, clube, j.nota), ag?.ganancia ?? 10);

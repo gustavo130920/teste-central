@@ -198,4 +198,3 @@ Finanças por perfil inicial (GDD-gestao 12; média das ${anos5} primeiras tempo
   console.log(`  Soma dos 30 (R$ mi), ano 1 → ano ${anos}: receita ${soma(r1, 'receita')} → ${soma(rn, 'receita')} · caixa ${soma(r1, 'caixa')} → ${soma(rn, 'caixa')} · dívida ${soma(r1, 'divida')} → ${soma(rn, 'divida')}`);
   console.log(`  Folha ÷ receita, ano 1 → ano ${anos}: ${pc(med(r1.map((h) => h.lanc.folha / h.receita)))} → ${pc(med(rn.map((h) => h.lanc.folha / h.receita)))} · meses com folha atrasada (2+) por ano ${(todos.reduce((a, h) => a + h.lanc.mesesAtraso, 0) / anos).toFixed(1)} · com rescisão possível (3+) ${(todos.reduce((a, h) => a + h.lanc.mesesRescisao, 0) / anos).toFixed(1)}`);
 }
-
