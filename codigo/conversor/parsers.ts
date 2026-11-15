@@ -233,7 +233,7 @@ export function lerTecnicos(texto: string, liga: string, rel: Relatorio): Tecnic
     res.push({
       nome: cab.nome, idade: cab.idade, nacionalidade: cab.nac, clube: c['Clube'] ?? '', clubeId: null, liga,
       estilo: c['Estilo'] ?? '', formacaoComBola: com, formacaoSemBola: sem,
-      reacao: c['Reação nas pausas'] ?? null, temperamento: c['Temperamento'] ?? null, origem: c['Origem'] ?? null,
+      reacao: c['Reação nas pausas'] ?? null, temperamento: c['Temperamento'] ?? null, imprensa: c['Imprensa'] ?? null, origem: c['Origem'] ?? null,
       trabalho, reputacao: Number(c['Reputação']), ambicao: c['Ambição'] ? Number(c['Ambição']) : null,
       lealdade: c['Lealdade'] ? Number(c['Lealdade']) : null, historia: c['História'] ?? '',
     });

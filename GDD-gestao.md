@@ -527,7 +527,7 @@ Tudo acontece na etapa 2 da tela do ciclo (seção 1). Eventos, coletivas e fala
 |---|---|
 | Sorteado | No máximo 1 por ciclo. Chance de `5% × dias até o próximo jogo`, entre 10% e 50% |
 | Elo de cadeia | No primeiro ciclo depois das N semanas do `Segue` |
-| Obrigatório | Quando a condição ocorre: ultimato (`DIR-021`, Confiança até 20, seção 9) e salários atrasados (`FIN-011`, 2 meses, seção 7) |
+| Obrigatório | Quando a condição ocorre: ultimato (`DIR-021`, Confiança até 20, seção 9) e salários atrasados (`FIN-011`, 2 meses, seção 7; uma vez por episódio, volta só depois da folha em dia) |
 
 Referência: cerca de 16 sorteados por temporada na Série A com copas e 11 na Série B, mais os elos.
 
@@ -574,7 +574,7 @@ O jogador conhece o repórter, mas não sabe se o rumor é verdadeiro. O bom rum
 |---|---|---|
 | Próximo jogo é clássico ou decisão | Sempre | 2 |
 | Crise | 50% | 1 |
-| Ciclo Normal ou Longo | 30% | 1 |
+| Ciclo Normal ou Longo | 50% | 1 |
 | Ciclo Curto | Não há | — |
 
 Fora de clássico e decisão, não há coletiva em 2 ciclos seguidos. Referência: cerca de 20 por temporada na Série A.
@@ -591,7 +591,7 @@ Fora de clássico e decisão, não há coletiva em 2 ciclos seguidos. Referênci
 
 **Efeitos.** `Moral` vale para o elenco todo e `Ímpeto`, para o rival no próximo jogo. Momento: em fase ruim, efeito negativo sobe um nível; em fase boa, desce um nível (P vira 0); no clássico, Ímpeto sobe um nível.
 
-**Assessoria.** Responde com "Avançar", ao clicar em "Jogar" sem responder ou com a área Imprensa delegada. Usa o tom padrão; sem ele na pergunta, Humildade; sem Humildade, a primeira opção. Ganhos × 0,5.
+**Assessoria.** Responde com "Avançar", ao clicar em "Jogar" sem responder ou com a área Imprensa delegada. Usa o tom padrão; sem ele na pergunta, Humildade; sem Humildade, a primeira opção. Ganhos × 0,35.
 
 **Tom repetido.** Da 3ª coletiva seguida com o mesmo tom em diante, ganhos × 0,5. Não acumula com a assessoria.
 

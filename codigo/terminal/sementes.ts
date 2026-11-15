@@ -1,4 +1,4 @@
-// Uso: npm run sementes -- [ANOS] [SEMENTE] [N] [--testar CAMINHO=VALOR ...]
+// Uso: npm run sementes -- [ANOS] [SEMENTE] [N] [--cenario ia|avancar|aleatorio] [--testar CAMINHO=VALOR ...]
 // Roda N carreiras em paralelo (sementes SEMENTE a SEMENTE + N − 1) e mostra a média das medições do
 // GDD-gestao 12 (Elenco e mundo, Mercado e Finanças). Cada linha sai com os números trocados pela média;
 // o 1º número de cada linha também mostra o menor e o maior entre as sementes.
@@ -9,7 +9,7 @@ const args = process.argv.slice(2);
 const testes: string[] = [];
 const resto: string[] = [];
 for (let i = 0; i < args.length; i++) {
-  if (args[i] === '--testar') testes.push('--testar', args[++i] ?? '');
+  if (args[i] === '--testar' || args[i] === '--cenario') testes.push(args[i], args[++i] ?? '');
   else resto.push(args[i]);
 }
 const anos = Number(resto[0] ?? 20);
@@ -26,7 +26,7 @@ const rodar = (s: number): Promise<string> => new Promise((ok, falha) => {
 
 const NUM = /-?\d+(?:\.\d+)?/g;
 // Só os blocos de medição; linhas de nomes (compradores, transferências) variam demais entre sementes.
-const SECOES = ['Elenco e mundo', 'Diretoria e torcida', 'Mercado (GDD', 'Finanças por perfil', 'Finanças gerais'];
+const SECOES = ['Elenco e mundo', 'Diretoria e torcida', 'Eventos e imprensa', 'Mercado (GDD', 'Finanças por perfil', 'Finanças gerais'];
 const FORA = /Maiores compradores|Maiores transferências|^\s+meta:/;
 function medicoes(saida: string): string[] {
   const linhas = saida.split('\n');

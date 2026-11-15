@@ -25,6 +25,8 @@ import { quedaQuerSair, registrarNota } from './mercado.ts';
 import type { FichaDiretoria, Financeiro } from '../gestao/diretoria.ts';
 import type { ContagemDiretoria, EstadoDiretoria } from './diretoria.ts';
 import { criarDiretorias, novaContagemDiretoria } from './diretoria.ts';
+import type { ImprensaMundo } from './eventos.ts';
+import { respaldoDasMarcas } from './eventos.ts';
 
 export const ENTRE_JOGOS = {
   /** GDD-gestao 1: tipo de ciclo pelos dias até o próximo jogo. */
@@ -38,6 +40,8 @@ export const ENTRE_JOGOS = {
   /** GDD-gestao 4: lesão no treino, % por jogador e por ciclo. */
   lesaoTreino: { base: 0.1, propensaoBase: 0.5, propensaoDiv: 10, condicaoBaixa: 50, fatorCondicaoBaixa: 2, leve: 80 },
   volta: 70,
+  /** Menos que isso disponível: sobe jovem da base só para o jogo. */
+  minimoDisponiveis: 16,
   recaida: { dias: 28, base: { leve: 0, media: 3, grave: 6 } as Record<Gravidade, number>, fracao: [0.5, 1] },
   grave: { propensao: 1, sequela: 20 },
   /** GDD-motor 8: jogos de suspensão. */
@@ -78,7 +82,7 @@ export interface Memoria {
   leituras: Map<string, LeituraJogo>;
   /** Comissão e treino de cada clube (etapa 4); vazio sem `gestao`. */
   gestao: Map<string, ClubeGestao>;
-  contagem: { lesoesTreino: number; recaidas: number; sequelas: number; suspensoes: number; semGoleiro: number; adaptacoes: number; leiturasCertas: number; leiturasErradas: number };
+  contagem: { lesoesTreino: number; recaidas: number; sequelas: number; suspensoes: number; semGoleiro: number; baseEmergencia: number; adaptacoes: number; leiturasCertas: number; leiturasErradas: number };
   /** Etapa 4, 3ª fatia: evolução de cada jogador (elenco e base), base de cada clube e o que cada clube fez no período. */
   evolucao: Map<string, EstadoEvolucao>;
   base: Map<string, Jogador[]>;
@@ -99,6 +103,8 @@ export interface Memoria {
   /** Confrontos de copa já contados no ano e transferências já lidas. */
   dirCopas: Set<string>;
   dirTransf: number;
+  /** Etapa 4, 7ª fatia: eventos e imprensa (null sem `eventos` na temporada). */
+  imprensa: ImprensaMundo | null;
 }
 
 /** Jogos e treino do clube nos períodos de 4 e de 13 semanas e no ano. */
@@ -126,6 +132,8 @@ export interface ClubeGestao {
   jogos: number;
   /** Título na temporada (+10 no alvo do Respaldo). */
   titulo: boolean;
+  /** Evento "Treino perdido": o próximo ciclo não treina (7ª fatia). */
+  treinoPerdido?: boolean;
 }
 
 /** Dados da Gestão para a memória: comissões dos clubes, clube e técnico de cada um, catálogo tático. */
@@ -179,13 +187,13 @@ export function criarMemoria(elencos: Record<string, Jogador[]>, clubes: string[
   }
   const mem: Memoria = {
     elencos: copia, jogadores, ultimoJogo: new Map(), leituras: new Map(), gestao,
-    contagem: { lesoesTreino: 0, recaidas: 0, sequelas: 0, suspensoes: 0, semGoleiro: 0, adaptacoes: 0, leiturasCertas: 0, leiturasErradas: 0 },
+    contagem: { lesoesTreino: 0, recaidas: 0, sequelas: 0, suspensoes: 0, semGoleiro: 0, baseEmergencia: 0, adaptacoes: 0, leiturasCertas: 0, leiturasErradas: 0 },
     evolucao, base, periodo, nomes: dados?.nomes ?? new Nomes(Object.values(copia).flat()), seq: 0,
     evo: { joias: 0, safra: 0, chegouAoPot: [], pontos: 0, perdas: 0, ganhosMentais: 0 },
     financas: new Map((dados?.comercial?.fichas ?? []).filter((f) => dados!.entradas[f.clubeId]).map((f) => [f.clubeId, criarConta(f, dados!.entradas[f.clubeId].clube)])),
     marcas: dados?.comercial?.marcas ?? [],
     mercado: null,
-    diretoria: new Map(), humor: new Map(), financeiro: new Map(), dir: novaContagemDiretoria(), dirCopas: new Set(), dirTransf: 0,
+    diretoria: new Map(), humor: new Map(), financeiro: new Map(), dir: novaContagemDiretoria(), dirCopas: new Set(), dirTransf: 0, imprensa: null,
   };
   if (dados?.diretoria) criarDiretorias(mem, dados.diretoria, clubes.join(','));
   return mem;
@@ -243,7 +251,8 @@ export function prepararJogo(m: Memoria, clube: string, dia: number, competicao:
   const com = comissaoDe(m, clube);
   // Treino do ciclo (IA): decide carga e foco e aplica o ganho de entrosamento.
   let carga: Carga | undefined;
-  if (g && ciclo) {
+  if (g && ciclo && g.treinoPerdido) { g.treinoPerdido = false; cicloDeMoral(m, g, elenco, clube); }
+  else if (g && ciclo) {
     const chave = chaveTatica(g.tecnico);
     const d = decidirIA(g.treino, chave, g.semanas, ciclo);
     treinar(g.treino, chave, g.semanas, ciclo, d.carga, d.foco, treinoTatico(g.tecnico, g.comissao));
@@ -255,7 +264,7 @@ export function prepararJogo(m: Memoria, clube: string, dia: number, competicao:
       p.ciclos += 1;
       p.focos[d.foco] = (p.focos[d.foco] ?? 0) + 1;
     }
-    cicloDeMoral(m, g, elenco);
+    cicloDeMoral(m, g, elenco, clube);
   }
   for (const j of elenco) {
     const s = m.jogadores.get(j.id)!;
@@ -286,6 +295,14 @@ export function prepararJogo(m: Memoria, clube: string, dia: number, competicao:
     disponiveis = [...disponiveis, gol];
     m.contagem.semGoleiro += 1;
   }
+  // Emergência (Gustavo, 15/11/2026): com menos de 16 disponíveis, os melhores jovens da base de linha completam a lista só para este jogo.
+  const faltam = ENTRE_JOGOS.minimoDisponiveis - disponiveis.length;
+  if (faltam > 0) {
+    const jovens = [...(m.base.get(clube) ?? [])].filter((j) => j.posicao !== 'GOL').sort((a, b) => b.nota - a.nota).slice(0, faltam);
+    for (const j of jovens) if (!m.jogadores.has(j.id)) m.jogadores.set(j.id, novoEstado());
+    disponiveis = [...disponiveis, ...jovens];
+    if (jovens.length) m.contagem.baseEmergencia += 1;
+  }
   const condicao = Object.fromEntries(disponiveis.map((j) => [j.id, Math.round(m.jogadores.get(j.id)!.condicao)]));
   const poupados = disponiveis.filter((j) => condicao[j.id] < ENTRE_JOGOS.poupar).map((j) => j.id);
   const moral = g ? Object.fromEntries(disponiveis.map((j) => [j.id, Math.round(m.jogadores.get(j.id)!.moral)])) : undefined;
@@ -293,7 +310,7 @@ export function prepararJogo(m: Memoria, clube: string, dia: number, competicao:
 }
 
 /** Ciclo (GDD-gestao 3): moral volta para 55, queda por Minutos e Respaldo anda 20% até o alvo. */
-function cicloDeMoral(m: Memoria, g: ClubeGestao, elenco: Jogador[]): void {
+function cicloDeMoral(m: Memoria, g: ClubeGestao, elenco: Jogador[], clube: string): void {
   const pesos = pesosDe(g.tecnico, quedaMoral(g.comissao));
   const melhores = melhoresDoElenco(elenco);
   for (const j of elenco) {
@@ -308,7 +325,7 @@ function cicloDeMoral(m: Memoria, g: ClubeGestao, elenco: Jogador[]): void {
   const est = (id: string): EstadoJogador => m.jogadores.get(id)!;
   const grupo = moralDoGrupo(elenco, (id) => est(id).moral, (id) => est(id).titularidades, g.jogos);
   const lideres = elenco.filter((j) => j.qualidades.includes(LIDER)).map((j) => est(j.id).moral);
-  g.respaldo = andarRespaldo(g.respaldo, alvoRespaldo(grupo, g.tecnico, lideres, g.titulo));
+  g.respaldo = andarRespaldo(g.respaldo, alvoRespaldo(grupo, g.tecnico, lideres, g.titulo, respaldoDasMarcas(m, clube)));
 }
 
 /** O que a comissão e o último ciclo de treino entregam ao motor. */
@@ -342,9 +359,11 @@ export function registrarJogo(m: Memoria, clube: string, lado: 0 | 1, r: Resulta
     s.ciclosSemJogar = jogaram.has(j.id) ? 0 : s.ciclosSemJogar + 1;
   }
   const novasLesoes = new Set(r.lesoes.filter((l) => l.time === lado).map((l) => l.jogador));
+  // Quem jogou pode ser jovem da base chamado por emergência (prepararJogo).
+  const achar = (id: string): Jogador => (elenco.find((y) => y.id === id) ?? m.base.get(clube)?.find((y) => y.id === id))!;
   for (const x of t.participantes) {
     const s = m.jogadores.get(x.j.id)!;
-    const j = elenco.find((y) => y.id === x.j.id)!;
+    const j = achar(x.j.id);
     s.condicao = Math.round(x.energia);
     if (x.expulso) {
       s.suspensao[competicao] = (s.suspensao[competicao] ?? 0) + (x.expulso === 'direto' ? e.suspensao.direto : e.suspensao.segundoAmarelo);
@@ -369,7 +388,7 @@ export function registrarJogo(m: Memoria, clube: string, lado: 0 | 1, r: Resulta
   }
   for (const l of r.lesoes) {
     if (l.time !== lado) continue;
-    const j = elenco.find((y) => y.id === l.jogador)!;
+    const j = achar(l.jogador);
     lesionar(m, j, m.jogadores.get(j.id)!, l.gravidade, diasFora(l.semanas, j.idade, com.tratamento), dia, rng);
   }
 }

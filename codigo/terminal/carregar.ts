@@ -6,6 +6,7 @@ import type { EntradaTime } from '../motor/tipos.ts';
 import type { Comercial } from '../gestao/financas.ts';
 import type { Empresario } from '../gestao/mercado.ts';
 import type { FichaDiretoria } from '../gestao/diretoria.ts';
+import type { Imprensa, ModeloEvento } from '../gestao/eventos.ts';
 
 const GERADO = join(dirname(fileURLToPath(import.meta.url)), '..', 'gerado');
 const ler = <T>(arq: string): T => JSON.parse(readFileSync(join(GERADO, arq), 'utf8')) as T;
@@ -27,6 +28,9 @@ export interface Base {
   empresarios: Empresario[];
   /** Diretorias (etapa 4, 6ª fatia). */
   diretoria: FichaDiretoria[];
+  /** Eventos e imprensa (etapa 4, 7ª fatia). */
+  eventos: ModeloEvento[];
+  imprensa: Imprensa;
 }
 
 export function carregarBase(): Base {
@@ -42,6 +46,8 @@ export function carregarBase(): Base {
     comercial: ler<Comercial>('comercial.json'),
     empresarios: ler<Empresario[]>('empresarios.json'),
     diretoria: ler<FichaDiretoria[]>('diretoria.json'),
+    eventos: ler<ModeloEvento[]>('eventos.json'),
+    imprensa: ler<Imprensa>('imprensa.json'),
   };
 }
 

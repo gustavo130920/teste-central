@@ -10,6 +10,8 @@ import { lerFichas, lerMarcas, lerReduzidas } from './comercial.ts';
 import type { Comercial } from '../gestao/financas.ts';
 import { lerEmpresarios } from './empresarios.ts';
 import { lerDiretorias, lerDiretoriasReduzidas } from './diretoria.ts';
+import { lerEventos, lerImprensa, lerReporteres } from './eventos.ts';
+import type { Imprensa, ModeloEvento } from '../gestao/eventos.ts';
 
 const raiz = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const DADOS = join(raiz, 'dados');
@@ -98,6 +100,16 @@ for (const arq of readdirSync(join(DADOS, 'narracao')).filter((a) => a.endsWith(
 }
 
 // Cruzamentos que o motor precisa para rodar.
+const eventos: ModeloEvento[] = [];
+for (const arq of readdirSync(join(DADOS, 'eventos')).filter((a) => a.endsWith('.md')).sort()) eventos.push(...lerEventos(ler('eventos', arq), basename(arq, '.md'), rel));
+for (const e of eventos) for (const x of e.escolhas) for (const f of [...x.efeitos, ...x.sucesso, ...x.falha]) {
+  if (f.k === 'Segue' && !eventos.some((o) => o.id === f.id)) avisos.push(`${e.id}: Segue para ${f.id}, que não existe`);
+}
+const imprensa: Imprensa = { reporteres: lerReporteres(ler('imprensa', 'reporteres.md'), rel), itens: [] };
+for (const arq of readdirSync(join(DADOS, 'imprensa')).filter((a) => a.endsWith('.md') && a !== 'reporteres.md').sort()) {
+  imprensa.itens.push(...lerImprensa(ler('imprensa', arq), basename(arq, '.md'), rel));
+}
+
 const competindo = clubes.filter((c) => !c.reserva);
 for (const c of competindo) {
   const t = tecnicos.find((x) => x.clubeId === c.id);
@@ -121,6 +133,8 @@ gravar('narracao.json', narracao);
 gravar('comercial.json', comercial);
 gravar('empresarios.json', empresarios);
 gravar('diretoria.json', diretorias);
+gravar('eventos.json', eventos);
+gravar('imprensa.json', imprensa);
 const contagem = {
   clubesCompetindo: competindo.length,
   clubesReserva: clubes.length - competindo.length,
@@ -144,6 +158,8 @@ const contagem = {
   clientes: empresarios.reduce((s, e) => s + e.clientes.length, 0),
   diretorias: diretorias.length,
   diretoriasCompletas: diretorias.filter((d) => d.metas).length,
+  eventos: eventos.length,
+  imprensa: imprensa.itens.length,
 };
 gravar('_relatorio.json', { aviso: 'Gerado por conversor/converter.ts. Não edite gerado/ à mão.', contagem, problemas: rel.problemas, avisos });
 

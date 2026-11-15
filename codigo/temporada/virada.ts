@@ -1,5 +1,6 @@
 // Virada do ano (etapa 3, 4ª fatia; GDD-gestao 11): encerramento, acesso e queda, vagas, reputação e torcida, ano novo.
 // Metas, finanças, pessoas, Europa e reposição ficam para a etapa 4 (Gestão).
+import type { DadosEventos } from './eventos.ts';
 import type { Clube, Jogador, Profissional, Tatica, Tecnico } from '../motor/dados.ts';
 import type { EntradaTime } from '../motor/tipos.ts';
 import { ANO1 } from './copas.ts';
@@ -78,6 +79,8 @@ export interface Mundo {
   empresarios?: Empresario[];
   /** Etapa 4, 6ª fatia: fichas de diretoria (o estado vive na memória). */
   diretoria?: FichaDiretoria[];
+  /** Etapa 4, 7ª fatia: eventos e imprensa (o estado vive na memória); sem eles, cenário IA. */
+  eventos?: DadosEventos;
 }
 
 export interface BaseMundo {
@@ -123,7 +126,7 @@ function entradas(m: Mundo): Record<string, EntradaTime> {
 export function jogarAno(m: Mundo, semente: number, adaptacao = true): Temporada {
   const t = simularTemporada({
     semente: semente * 1000 + m.ano, clubesPorLiga: m.clubesPorLiga, europeus: m.europeus, entradas: entradas(m), elencos: m.elencos, tatica: m.tatica,
-    libertadores: m.libertadores, folgasCopaDoBrasil: m.folgasCopaDoBrasil, memoria: m.memoria ?? undefined, adaptacao, comissoes: m.comissoes, nomes: m.nomes, comercial: m.comercial, diretoria: m.diretoria, tecnicos: m.tecnicos, ano: m.ano,
+    libertadores: m.libertadores, folgasCopaDoBrasil: m.folgasCopaDoBrasil, memoria: m.memoria ?? undefined, adaptacao, comissoes: m.comissoes, nomes: m.nomes, comercial: m.comercial, diretoria: m.diretoria, tecnicos: m.tecnicos, ano: m.ano, eventos: m.eventos,
     mercado: m.empresarios && m.comissoes ? {
       ano: m.ano, clubes: m.clubes, europeus: m.europeus, livres: m.livres, livreDesde: m.livreDesde, libertadores: m.libertadores.flat(),
       empresarios: m.empresarios, reduzidas: m.comercial?.reduzidas ?? [],

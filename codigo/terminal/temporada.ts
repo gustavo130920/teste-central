@@ -68,7 +68,7 @@ for (const l of LIGAS) {
   console.log(`${NOMES[l].padEnd(16)} ${media((x) => x.d.lesionados.length)}    ${media((x) => x.d.suspensos.length)}    ${media((x) => x.d.poupados.length)}       ${media((x) => x.c)}`);
 }
 const c = t.memoria.contagem;
-console.log(`Suspensões ${c.suspensoes} · lesões no treino ${c.lesoesTreino} · recaídas ${c.recaidas} · sequelas ${c.sequelas} · jogos sem goleiro disponível ${c.semGoleiro}`);
+console.log(`Suspensões ${c.suspensoes} · lesões no treino ${c.lesoesTreino} · recaídas ${c.recaidas} · sequelas ${c.sequelas} · jogos sem goleiro disponível ${c.semGoleiro} · jogos com jovem da base por emergência ${c.baseEmergencia}`);
 
 // Copas (3ª fatia).
 for (const c of t.copas) {

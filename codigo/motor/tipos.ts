@@ -124,6 +124,8 @@ export interface EntradaTime {
   fatorCasa?: number;
   /** Humor até 25: vaia em casa com o time perdendo. */
   vaia?: boolean;
+  /** Ímpeto no início do jogo (eventos e imprensa, 7ª fatia); sem ele, 0. */
+  impeto?: number;
 }
 
 /** O que a comissão e o treino do ciclo entregam ao motor (GDD-gestao 2 e 8). */

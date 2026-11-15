@@ -63,6 +63,8 @@ export interface EstadoMercado {
   /** Decisão de renovação no ano: 'nao' (sai no vencimento) ou 'ok'. */
   renovacao: Map<string, 'nao' | 'ok'>;
   querSair: Set<string>;
+  /** 7ª fatia: "Fica até o fim da temporada" (evento); ninguém compra até a virada. */
+  fica: Set<string>;
   transferencias: Transferencia[];
   contagem: ContagemMercado;
   /** Valor médio de todos os jogadores no 1º recálculo de cada ano (GDD-gestao 12). */
@@ -95,7 +97,7 @@ export function criarMercado(ctx: ContextoMercado): EstadoMercado {
     ano: ctx.ano, clubes: new Map(), europeus: new Set(), livres: ctx.livres, livreDesde: ctx.livreDesde, libertadores: new Set(),
     conhecimento: new Map(), notas: new Map(), empresarios, agenteDe,
     reduzidas: new Map(ctx.reduzidas.map((r) => [r.clubeId, { perfil: r.perfil, orcamento: r.orcamento, orcamentoAno: r.orcamento, teto: r.teto }])),
-    emprestimos: [], preContratos: new Map(), compras: new Map(), tentativasEuropa: new Map(), fechadas: new Set(), renovacao: new Map(), querSair: new Set(),
+    emprestimos: [], preContratos: new Map(), compras: new Map(), tentativasEuropa: new Map(), fechadas: new Set(), renovacao: new Map(), querSair: new Set(), fica: new Set(),
     transferencias: [], contagem: zeros(), valorMedio: [], escalaEuropa: new Map(),
   };
   atualizarContexto(m, ctx);
@@ -345,7 +347,7 @@ function tentarReforco(mem: Memoria, clube: string, semana: number, janela: 0 | 
   const folga = tetoDe(mem, clube) - folhaDoClube(mem, clube);
   const alvos: Alvo[] = [];
   for (const j of todosOsCandidatos(mem, clube)) {
-    if (grupoDe(j) !== grupo || j.idade > pol.idadeMax || m.fechadas.has(`${clube}>${j.id}`)) continue;
+    if (grupoDe(j) !== grupo || j.idade > pol.idadeMax || m.fechadas.has(`${clube}>${j.id}`) || m.fica.has(j.id)) continue;
     const livre = j.clubeId === null;
     const sem = semanasDeContrato(m, j, semana);
     const preContrato = !livre && janela === 1 && sem !== null && sem <= M.preContrato && m.renovacao.get(j.id) !== 'ok';
@@ -580,7 +582,7 @@ function tentativaEuropeia(mem: Memoria, clube: string, semana: number, janela: 
   for (const [c, js] of Object.entries(mem.elencos)) {
     if (m.europeus.has(c)) continue;
     for (const j of js) {
-      if (j.idade > M.europa.idade || emprestado(m, j.id) || m.preContratos.has(j.id) || m.fechadas.has(`${clube}>${j.id}`)) continue;
+      if (j.idade > M.europa.idade || emprestado(m, j.id) || m.preContratos.has(j.id) || m.fechadas.has(`${clube}>${j.id}`) || m.fica.has(j.id)) continue;
       const est = estimativa(mem, clube, j);
       if (Math.max(est.nota, est.pot) < forca - M.europa.folgaForca) continue;
       const valor = valorEstimado(mem, clube, j, semana);

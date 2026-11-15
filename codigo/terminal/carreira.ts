@@ -1,4 +1,5 @@
-// Uso: npm run carreira -- [ANOS] [SEMENTE] [sem-adaptacao] [--testar EVOLUCAO.idade.0.1=0.5 ...]
+// Uso: npm run carreira -- [ANOS] [SEMENTE] [sem-adaptacao] [--cenario ia|avancar|aleatorio] [--texto CLUBE] [--testar EVOLUCAO.idade.0.1=0.5 ...]
+// --cenario: eventos e imprensa nos 30 brasileiros (7ª fatia; padrão ia, sem eventos). --texto: resumo da 1ª temporada de um clube.
 // Roda várias temporadas seguidas com a virada entre elas e mostra campeões, acesso e queda, vagas e o mundo ao fim.
 // --testar troca um número só nesta execução (calibração do GDD-gestao 12), nunca no arquivo.
 import { APOSENTADORIA, BASE, REPOSICAO } from '../gestao/base.ts';
@@ -6,16 +7,22 @@ import { EVOLUCAO, PERFIL } from '../gestao/evolucao.ts';
 import { FINANCAS, PERFIS } from '../gestao/financas.ts';
 import { MERCADO } from '../gestao/mercado.ts';
 import { DIRETORIA, TORCIDA } from '../gestao/diretoria.ts';
+import { EVENTOS, IMPRENSA } from '../gestao/eventos.ts';
+import { CICLO_IMPRENSA, DEFEITOS_TORCIDA } from '../temporada/eventos.ts';
 import { criarMundo, jogarAno, virar } from '../temporada/virada.ts';
 import { carregarBase } from './carregar.ts';
 
 const args: string[] = [];
+let cenario = 'ia';
+let texto: string | null = null;
 for (let i = 2; i < process.argv.length; i++) {
+  if (process.argv[i] === '--cenario') { cenario = process.argv[++i] ?? 'ia'; continue; }
+  if (process.argv[i] === '--texto') { texto = process.argv[++i] ?? null; continue; }
   if (process.argv[i] !== '--testar') { args.push(process.argv[i]); continue; }
   const pedido = process.argv[++i] ?? '';
   const [caminho, valor] = pedido.split('=');
   const partes = caminho.split('.');
-  let alvo: Record<string, unknown> = { EVOLUCAO, BASE, APOSENTADORIA, PERFIL, REPOSICAO, FINANCAS, MERCADO, DIRETORIA, TORCIDA };
+  let alvo: Record<string, unknown> = { EVOLUCAO, BASE, APOSENTADORIA, PERFIL, REPOSICAO, FINANCAS, MERCADO, DIRETORIA, TORCIDA, EVENTOS, IMPRENSA, CICLO_IMPRENSA, DEFEITOS_TORCIDA };
   for (const p of partes.slice(0, -1)) alvo = (alvo?.[p] ?? null) as Record<string, unknown>;
   const chave = partes[partes.length - 1];
   const novo = Number(valor);
@@ -31,6 +38,12 @@ const base = carregarBase();
 const nome = new Map(base.clubes.map((c) => [c.id, c.nomeCurto]));
 const n = (id: string): string => nome.get(id) ?? id;
 const m = criarMundo(base);
+const BR0 = base.clubes.filter((c) => (c.liga === 'serie-a' || c.liga === 'serie-b') && !c.reserva).map((c) => c.id);
+if (cenario !== 'ia') {
+  if (cenario !== 'avancar' && cenario !== 'aleatorio') throw new Error(`cenário inválido: ${cenario}`);
+  m.eventos = { modelos: base.eventos, imprensa: base.imprensa, cenario, clubes: BR0, texto };
+  console.log(`Cenário: ${cenario} (eventos e imprensa nos 30 brasileiros)`);
+}
 const NOMES: Record<string, string> = {
   'serie-a': 'Série A', 'serie-b': 'Série B', argentina: 'Argentina', colombia: 'Colômbia', chile: 'Chile',
   'copa-do-brasil': 'Copa do Brasil', libertadores: 'Libertadores', champions: 'Champions', mundial: 'Mundial',
@@ -71,6 +84,13 @@ const acompanharCoorte = (i: number) => {
 };
 for (let i = 0; i < anos; i++) {
   const t = jogarAno(m, semente, adaptacao);
+  const I = m.memoria?.imprensa;
+  if (I && texto && i === 0) {
+    console.log(`
+Resumo da temporada 1 de ${n(texto)} (cenário ${cenario})`);
+    for (const l of I.log) console.log(l);
+    I.dados.texto = null;
+  }
   jogos += t.jogos.length;
   for (const j of t.jogos) if (j.competicao === 'serie-a' || j.competicao === 'serie-b') mando[j.placar[0] > j.placar[1] ? 0 : j.placar[0] === j.placar[1] ? 1 : 2] += 1;
   acompanharCoorte(i);
@@ -165,6 +185,28 @@ if (md?.diretoria.size) {
   console.log(`  Eleições ${d.eleicoes} (presidente novo ${d.presidentesNovos}) · meta do investidor: avaliações ${d.investidor.avaliacoes}, falhas corta ${d.investidor.corta}, troca ${d.investidor.troca}, vende ${d.investidor.vende} · SAFs novas com investidor ${d.investidor.safsNovas}`);
   console.log(`  Aval negado (Confiança abaixo de 40): estrutura ${d.aval.estrutura}, empréstimo ${d.aval.emprestimo} meses, venda ${d.aval.venda} · compras no crédito do Gastador R$ ${(d.credito / anos).toFixed(1)} mi por ano`);
   console.log(`  Mando nas Séries A e B: casa ${pc(mando[0], total)}, empate ${pc(mando[1], total)}, fora ${pc(mando[2], total)}`);
+  // Cenário "Avançar" em Tradicional médio: o técnico do início demitido em até 3 temporadas (GDD-gestao 12).
+  const trad = base.comercial.fichas.filter((f) => f.perfil === 'Tradicional médio').map((f) => f.clubeId);
+  const demitido = trad.filter((c) => d.saidas.some((s) => s.clube === c && s.motivo === 'demissão' && s.ano <= 3)).length;
+  console.log(`  Tradicional médio com o técnico do início demitido em até 3 temporadas: ${pc(demitido, trad.length)} de ${trad.length} (meta 40% no cenário Avançar, 30 a 50)`);
+  console.log(`  Nos 30 brasileiros, média mensal: moral do grupo ${(d.br.moral / Math.max(1, d.br.n)).toFixed(1)} (meta 55, 45 a 65) · Humor ${(d.br.humor / Math.max(1, d.br.n)).toFixed(1)} · Confiança ${(d.br.confianca / Math.max(1, d.br.n)).toFixed(1)}`);
+  console.log(`  Defeitos na torcida: ${(d.defeitos.n / anos).toFixed(0)} jogos com efeito por temporada, Humor ${(d.defeitos.soma / Math.max(1, d.defeitos.n)).toFixed(2)} por jogo · por defeito e temporada (antes do teto): ${Object.entries(d.defeitos.tipos).map(([k, v]) => `${k} ${(v / anos).toFixed(0)}`).join(', ')}`);
+  const I = md.imprensa;
+  if (I) {
+    console.log(`
+Eventos e imprensa (GDD-gestao 12, cenário ${cenario})`);
+    for (const [liga, nomeLiga, metas] of [['serie-a', 'Série A com copas', '16 (13 a 19) · 20 (15 a 25) · 13 (10 a 16)'], ['serie-b', 'Série B', '11 (8 a 14) · 12 (8 a 15) · 6 (4 a 8)']] as const) {
+      const h = I.historico.filter((x) => x.liga === liga);
+      const mh = (f: (x: (typeof h)[number]) => number): string => (h.reduce((s, x) => s + f(x), 0) / Math.max(1, h.length)).toFixed(1);
+      console.log(`  ${nomeLiga}, por clube e temporada: eventos sorteados ${mh((x) => x.sorteados)} · coletivas ${mh((x) => x.coletivas)} · falas ${mh((x) => x.falas)} (metas ${metas}) · elos ${mh((x) => x.elos)} · obrigatórios ${mh((x) => x.obrigatorios)} · manchetes com efeito ${mh((x) => x.manchetes)}`);
+    }
+    const h = I.historico;
+    console.log(`  Confiança somada pelas coletivas por temporada: ${(h.reduce((s, x) => s + x.confColetiva, 0) / Math.max(1, h.length)).toFixed(1)} (meta +8 só com a assessoria, até +12) · perguntas por coletiva ${(h.reduce((s, x) => s + x.perguntas, 0) / Math.max(1, h.reduce((s, x) => s + x.coletivas, 0))).toFixed(2)}`);
+    { const fs = ['evento', 'coletiva', 'fala', 'manchete']; const m = (f: string, k: 'Humor' | 'Confiança') => (h.reduce((s, x) => s + (x.porFonte[f]?.[k] ?? 0), 0) / Math.max(1, h.length)).toFixed(1);
+      console.log(`  Humor / Confiança nominais por fonte e temporada: ${fs.map((f) => `${f} ${m(f, 'Humor')} / ${m(f, 'Confiança')}`).join(' · ')}`); }
+    const ss = Object.entries(I.semSistema).map(([k, v]) => `${k} ${v}`).join(', ');
+    console.log(`  Efeitos sem sistema ou recusados: ${ss || 'nenhum'} · modelos usados ${new Set(Object.keys(I.escolhas).map((k) => k.slice(0, 7))).size} de ${I.dados.modelos.length}`);
+  }
 }
 
 const mm = m.memoria?.mercado;

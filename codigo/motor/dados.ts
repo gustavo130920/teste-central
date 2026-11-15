@@ -82,6 +82,8 @@ export interface Tecnico {
   formacaoSemBola: string;
   reacao: string | null;
   temperamento: string | null;
+  /** Jeito com a imprensa (polêmico ou discreto); só nos técnicos com ficha completa. */
+  imprensa?: string | null;
   origem: string | null;
   trabalho: Record<string, number> | null;
   reputacao: number;

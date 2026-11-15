@@ -106,15 +106,15 @@ export function moralDoGrupo(elenco: Jogador[], moral: (id: string) => number, t
 
 export const respaldoInicial = (t: Tecnico): number => RESPALDO_GESTAO.inicial + (t.reputacao - 10);
 
-/** Alvo do Respaldo: moral do grupo + (Gestão de Grupo − 10) × 2 + marcas e fatos. Promessas e grupo rachado chegam com os eventos (7ª fatia). */
-export function alvoRespaldo(grupo: number, t: Tecnico, lideres: number[], titulo: boolean): number {
+/** Alvo do Respaldo: moral do grupo + (Gestão de Grupo − 10) × 2 + marcas e fatos. `marcas`: grupo rachado e promessas quebradas (7ª fatia). */
+export function alvoRespaldo(grupo: number, t: Tecnico, lideres: number[], titulo: boolean, marcas = 0): number {
   const r = RESPALDO_GESTAO;
   let alvo = grupo + ((t.trabalho?.['Gestão de Grupo'] ?? r.semDado) - 10) * r.gestaoGrupo;
   // PROVISORIO: com mais de um líder, vale o melhor caso; o baixo só pesa sem nenhum líder bem.
   if (lideres.some((m) => m >= r.liderAlto.moral)) alvo += r.liderAlto.alvo;
   else if (lideres.some((m) => m <= r.liderBaixo.moral)) alvo += r.liderBaixo.alvo;
   if (titulo) alvo += r.titulo;
-  return alvo;
+  return alvo + marcas;
 }
 
 /** A cada ciclo, anda 20% da distância até o alvo. */

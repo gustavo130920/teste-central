@@ -10,6 +10,7 @@ import {
   DIRETORIA, PMG, TORCIDA, avaliar, copaNaMeta, efeitoDaMeta, eleger, fatorQueda, metaDoInvestidor, metasGeradas, mexerConfianca, mexerHumor, nivelDaIA, partesDaMeta, voltarHumor,
 } from '../gestao/diretoria.ts';
 import { efetivo } from '../gestao/comissao.ts';
+import { moralDoGrupo } from '../gestao/moral.ts';
 import type { Copa } from './copas.ts';
 import type { Memoria } from './memoria.ts';
 import { trocarTecnico } from './pessoas.ts';
@@ -48,11 +49,15 @@ export interface ContagemDiretoria {
   confiancaVirada: number[];
   /** Compras financiadas pelo crédito do Gastador (R$ mi). */
   credito: number;
+  /** 7ª fatia: defeitos na torcida (soma do Humor, jogos com efeito) e amostra mensal dos clubes com conta (moral do grupo, Humor, Confiança). */
+  defeitos: { soma: number; n: number; tipos: Record<string, number> };
+  br: { moral: number; humor: number; confianca: number; n: number };
 }
 
 export const novaContagemDiretoria = (): ContagemDiretoria => ({
   saidas: [], renovacoes: 0, metas: { Superou: 0, Cumpriu: 0, Falhou: 0 }, niveis: { 'Padrão': 0, 'Ousada': 0, 'Modesta': 0 }, eleicoes: 0, presidentesNovos: 0,
   investidor: { avaliacoes: 0, corta: 0, troca: 0, vende: 0, safsNovas: 0 }, humor: { soma: 0, n: 0, extremo: 0 }, aval: { estrutura: 0, emprestimo: 0, venda: 0 }, confiancaVirada: [], credito: 0,
+  defeitos: { soma: 0, n: 0, tipos: {} }, br: { moral: 0, humor: 0, confianca: 0, n: 0 },
 });
 
 /** O que a diretoria precisa do ano em curso. */
@@ -97,12 +102,14 @@ const blindagem = (mem: Memoria, clube: string): number => {
 const fator = (mem: Memoria, clube: string, st: EstadoDiretoria): number => fatorQueda(st.ficha.paciencia, blindagem(mem, clube));
 const perfil = (mem: Memoria, clube: string): string | null => mem.financas.get(clube)?.perfil ?? mem.mercado?.reduzidas.get(clube)?.perfil ?? null;
 
-function humor(mem: Memoria, clube: string, delta: number): void {
+/** Humor do clube (quedas pelo perfil). */
+export function humor(mem: Memoria, clube: string, delta: number): void {
   const h = mem.humor.get(clube);
   if (h !== undefined) mem.humor.set(clube, mexerHumor(h, delta, perfil(mem, clube)));
 }
 
-function confianca(mem: Memoria, ctx: CtxDiretoria, clube: string, delta: number): void {
+/** Confiança no técnico (quedas pela Paciência e pela Blindagem); em 0, demissão. */
+export function confianca(mem: Memoria, ctx: CtxDiretoria, clube: string, delta: number): void {
   const st = mem.diretoria.get(clube);
   if (!st) return;
   st.confianca = mexerConfianca(st.confianca, delta, fator(mem, clube, st));
@@ -198,6 +205,14 @@ export function mesNaDiretoria(mem: Memoria, ctx: CtxDiretoria): void {
       let d = h >= c.humorAlto ? PMG.P : h <= c.humorBaixo ? -PMG.P : 0;
       if ((mem.financas.get(clube)?.caixa ?? 0) < 0) d -= PMG.P;
       if (d) confianca(mem, ctx, clube, d);
+      const g = mem.gestao.get(clube);
+      if (g && mem.financas.has(clube)) {
+        const el = mem.elencos[clube] ?? [];
+        mem.dir.br.moral += moralDoGrupo(el, (id) => mem.jogadores.get(id)?.moral ?? 60, (id) => mem.jogadores.get(id)?.titularidades ?? 0, g.jogos);
+        mem.dir.br.humor += h;
+        mem.dir.br.confianca += st.confianca;
+        mem.dir.br.n += 1;
+      }
     }
     mem.humor.set(clube, voltarHumor(mem.humor.get(clube)!));
   }

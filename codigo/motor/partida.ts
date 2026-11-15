@@ -852,7 +852,7 @@ export function simularPartida(ent: EntradaPartida): ResultadoPartida {
   ];
   if (ent.neutro) t[0].emCasa = false;
   const st: Estado = {
-    rng, t, tatica: ent.tatica, impeto: [0, 0], placar: [0, 0], est: [novaEstat(), novaEstat()],
+    rng, t, tatica: ent.tatica, impeto: [ent.mandante.impeto ?? 0, ent.visitante.impeto ?? 0], placar: [0, 0], est: [novaEstat(), novaEstat()],
     fins: { finalizacao: 0, perda: 0, falta: 0, fora: 0, limite: 0 },
     lances: [], classico, bloco: 1, cadeia: 0, posse: 0, minuto: 0, acrescimo: 0, golsBloco: 0, faltasBloco: 0, lesoesBloco: 0, lesoes: [], porInicio: {}, avisos: [[], []],
   };

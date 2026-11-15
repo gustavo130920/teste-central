@@ -30,6 +30,8 @@ import { modCasa } from '../motor/clima.ts';
 import { jogoEmCasa } from './contas.ts';
 import type { CtxDiretoria } from './diretoria.ts';
 import { copaNaDiretoria, inicioDoAno, jogoNaDiretoria, mesNaDiretoria, semanaNaDiretoria } from './diretoria.ts';
+import type { DadosEventos } from './eventos.ts';
+import { cicloNaImprensa, criarImprensa, fecharAnoImprensa, impetoDoJogo, jogoNaImprensa, tituloNaImprensa, torcidaDosDefeitos } from './eventos.ts';
 
 export const LIGAS = ['serie-a', 'serie-b', 'argentina', 'colombia', 'chile'] as const;
 
@@ -87,6 +89,8 @@ export interface EntradaTemporada {
   diretoria?: FichaDiretoria[];
   tecnicos?: Tecnico[];
   ano?: number;
+  /** Eventos e imprensa (etapa 4, 7ª fatia; só com a diretoria): modelos, cenário e clubes que recebem. */
+  eventos?: DadosEventos;
 }
 
 export function simularTemporada(e: EntradaTemporada): Temporada {
@@ -103,6 +107,8 @@ export function simularTemporada(e: EntradaTemporada): Temporada {
   }
   const comMercado = !!memoria.mercado;
   const comDiretoria = memoria.diretoria.size > 0;
+  if (e.eventos && comDiretoria && !memoria.imprensa) memoria.imprensa = criarImprensa(memoria, e.eventos);
+  const comImprensa = !!memoria.imprensa;
   const ctxDir: CtxDiretoria = { ano: e.ano ?? 1, dia: 1, tecnicos: e.tecnicos ?? [], entradas: e.entradas, tatica: e.tatica, clubesPorLiga: e.clubesPorLiga };
   // Fator casa e vaia pelo Humor (GDD-gestao 9). PROVISORIO: sem conta (sul-americanos), o fator pela torcida × Humor ÷ 50.
   const casa = (id: string, visitante: string, competicao: string, decisao: boolean, neutro: boolean): { fatorCasa?: number; vaia?: boolean } => {
@@ -140,6 +146,12 @@ export function simularTemporada(e: EntradaTemporada): Temporada {
       const semente = semearDeTexto(`${e.semente}-${j.competicao}-${j.dia}-${j.mandante}-${j.visitante}`);
       const rngMem = criarRng(semearDeTexto(`${semente}-memoria`));
       const lados = [j.mandante, j.visitante] as const;
+      const decisao = !!jc && DECISAO.includes(jc.fase);
+      const classico = e.entradas[j.mandante].clube.rivais.some((x) => x.clubeId === j.visitante) || e.entradas[j.visitante].clube.rivais.some((x) => x.clubeId === j.mandante);
+      if (comImprensa) for (const k of [0, 1] as const) {
+        cicloNaImprensa(memoria, ctxDir, lados[k], { dia: j.dia, competicao: j.competicao, adversario: lados[1 - k], casa: k === 0 && !jc?.neutro, classico, decisao });
+      }
+      const impeto = comImprensa ? impetoDoJogo(memoria, lados[0], lados[1]) : [0, 0];
       const prep = lados.map((c) => prepararJogo(memoria, c, j.dia, j.competicao, rngMem));
       const padrao = lados.map((c, k) => {
         const leitura = memoria.leituras.get(`${c}>${lados[1 - k]}`);
@@ -153,8 +165,7 @@ export function simularTemporada(e: EntradaTemporada): Temporada {
         memoria.contagem.adaptacoes += 1;
         return aj.padrao;
       });
-      const decisao = !!jc && DECISAO.includes(jc.fase);
-      const entrada = (k: 0 | 1): EntradaTime => ({ ...e.entradas[lados[k]], elenco: prep[k].elenco, condicao: prep[k].condicao, poupados: prep[k].poupados, padrao: padrao[k] ?? e.entradas[lados[k]].padrao, apoio: prep[k].apoio, moral: prep[k].moral,
+      const entrada = (k: 0 | 1): EntradaTime => ({ ...(impeto[k] ? { impeto: impeto[k] } : {}), ...e.entradas[lados[k]], elenco: prep[k].elenco, condicao: prep[k].condicao, poupados: prep[k].poupados, padrao: padrao[k] ?? e.entradas[lados[k]].padrao, apoio: prep[k].apoio, moral: prep[k].moral,
         ...(k === 0 && comDiretoria ? casa(lados[0], lados[1], j.competicao, decisao, !!jc?.neutro) : {}) });
       const r = simularPartida({ mandante: entrada(0), visitante: entrada(1), tatica: e.tatica, semente, neutro: jc?.neutro });
       const [x, y] = r.estatisticas;
@@ -174,6 +185,10 @@ export function simularTemporada(e: EntradaTemporada): Temporada {
         memoria.leituras.set(chave, lerJogo(r, k, memoria.leituras.get(chave)));
       }
       for (const k of [0, 1] as const) registrarJogo(memoria, lados[k], k, r, j.dia, j.competicao, prep[k].desfalques.suspensos, rngMem, decisao);
+      if (comDiretoria) for (const k of [0, 1] as const) torcidaDosDefeitos(memoria, lados[k], k, r, k === 0 && !jc?.neutro);
+      if (comImprensa) for (const k of [0, 1] as const) {
+        jogoNaImprensa(memoria, lados[k], k, r, { dia: j.dia, competicao: j.competicao, adversario: lados[1 - k], casa: k === 0 && !jc?.neutro, classico, decisao, pro: r.placar[k], contra: r.placar[1 - k] }, !copa);
+      }
       if (comDiretoria) for (const k of [0, 1] as const) jogoNaDiretoria(memoria, ctxDir, e.entradas[lados[k]].clube, lados[1 - k], r.placar[k], r.placar[1 - k]);
       if (memoria.financas.size) jogoNasContas(memoria, j.competicao, e.entradas[j.mandante].clube, j.visitante, r.placar, !!jc?.neutro, decisao, ligaDe);
       if (copa && jc) {
@@ -183,6 +198,7 @@ export function simularTemporada(e: EntradaTemporada): Temporada {
         const campeao = copa.campeao();
         const gc = campeao ? memoria.gestao.get(campeao) : undefined;
         if (gc) gc.titulo = true;
+        if (campeao && comImprensa && !memoria.dirCopas.has(`${copa.id}-titulo-imprensa`)) { memoria.dirCopas.add(`${copa.id}-titulo-imprensa`); tituloNaImprensa(memoria, campeao, copa.id); }
       }
       jogos.push(d);
       e.aoJogar?.(d);
@@ -199,6 +215,7 @@ export function simularTemporada(e: EntradaTemporada): Temporada {
     if (comDiretoria && dia % FINANCAS.diasMes === 0 && dia <= FINANCAS.diasMes * FINANCAS.meses) mesNaDiretoria(memoria, ctxDir);
   }
 
+  if (comImprensa) fecharAnoImprensa(memoria, e.clubesPorLiga, ctxDir.ano);
   const tabelas: Record<string, Linha[]> = {};
   for (const liga of ligas) tabelas[liga] = classificar(e.clubesPorLiga[liga], jogos.filter((j) => j.competicao === liga), rngDe(`sorteio-${liga}`));
   return { semente: e.semente, jogos, tabelas, copas, memoria };
