@@ -17,13 +17,15 @@ import { fasesDasCopas, viradaContas } from './contas.ts';
 import type { Empresario } from '../gestao/mercado.ts';
 import type { ResumoMercado } from './mercado.ts';
 import { livresAntesDaBase, viradaContratos, viradaEuropaEContratos } from './mercado.ts';
+import type { FichaDiretoria } from '../gestao/diretoria.ts';
+import { humorMedioDoAno, viradaDiretoria } from './diretoria.ts';
 
 export const VIRADA = {
   diasNoAno: 364,
   /** GDD-gestao 11: troca entre Série A e Série B. */
   trocas: 4,
   reputacao: { titulo: 1, queda: -1, semLibertadores: { anos: 3, minimo: 15, delta: -1 }, min: 1, max: 20 },
-  torcida: { titulo: 2, libertadores: 1, queda: -2, passo: 5, min: 1, max: 20 },
+  torcida: { titulo: 2, libertadores: 1, queda: -2, humorAlto: 70, humorBaixo: 30, passo: 5, min: 1, max: 20 },
 } as const;
 
 /** País de cada liga sul-americana na Libertadores. */
@@ -74,6 +76,8 @@ export interface Mundo {
   comercial?: Comercial;
   /** Etapa 4, 5ª fatia: empresários (o mercado vive na memória). */
   empresarios?: Empresario[];
+  /** Etapa 4, 6ª fatia: fichas de diretoria (o estado vive na memória). */
+  diretoria?: FichaDiretoria[];
 }
 
 export interface BaseMundo {
@@ -86,6 +90,7 @@ export interface BaseMundo {
   profissionaisLivres?: Profissional[];
   comercial?: Comercial;
   empresarios?: Empresario[];
+  diretoria?: FichaDiretoria[];
 }
 
 export function criarMundo(base: BaseMundo): Mundo {
@@ -102,7 +107,7 @@ export function criarMundo(base: BaseMundo): Mundo {
     europeus: clubes.filter((c) => c.liga === 'europa').map((c) => c.id),
     libertadores: [lib.brasil, lib.argentina, lib.colombia, lib.chile], folgasCopaDoBrasil: [...ANO1.folgasCopaDoBrasil],
     memoria: null, torcidaPontos: new Map(), anosSemLibertadores: new Map(), historico: [],
-    livres, profissionaisLivres, livreDesde: new Map(livres.map((j) => [j.id, { ano: 0, dispensado: false }])), nomes, semente: 0, comercial: base.comercial, empresarios: base.empresarios,
+    livres, profissionaisLivres, livreDesde: new Map(livres.map((j) => [j.id, { ano: 0, dispensado: false }])), nomes, semente: 0, comercial: base.comercial, empresarios: base.empresarios, diretoria: base.diretoria,
   };
 }
 
@@ -118,7 +123,7 @@ function entradas(m: Mundo): Record<string, EntradaTime> {
 export function jogarAno(m: Mundo, semente: number, adaptacao = true): Temporada {
   const t = simularTemporada({
     semente: semente * 1000 + m.ano, clubesPorLiga: m.clubesPorLiga, europeus: m.europeus, entradas: entradas(m), elencos: m.elencos, tatica: m.tatica,
-    libertadores: m.libertadores, folgasCopaDoBrasil: m.folgasCopaDoBrasil, memoria: m.memoria ?? undefined, adaptacao, comissoes: m.comissoes, nomes: m.nomes, comercial: m.comercial,
+    libertadores: m.libertadores, folgasCopaDoBrasil: m.folgasCopaDoBrasil, memoria: m.memoria ?? undefined, adaptacao, comissoes: m.comissoes, nomes: m.nomes, comercial: m.comercial, diretoria: m.diretoria, tecnicos: m.tecnicos, ano: m.ano,
     mercado: m.empresarios && m.comissoes ? {
       ano: m.ano, clubes: m.clubes, europeus: m.europeus, livres: m.livres, livreDesde: m.livreDesde, libertadores: m.libertadores.flat(),
       empresarios: m.empresarios, reduzidas: m.comercial?.reduzidas ?? [],
@@ -171,7 +176,7 @@ export function virar(m: Mundo, t: Temporada): Resumo {
   // 4. Vagas.
   const libertadores = vagasLibertadores(t, m);
   const folgas = folgasCopaDoBrasil(t);
-  // 5. Clube: reputação e torcida (Humor ainda não existe: conta como neutro, PROVISORIO).
+  // 5. Clube: reputação e torcida (Humor médio do ano 70+ soma 1 ponto, até 30 tira 1; 6ª fatia).
   const titulos = new Map<string, number>();
   for (const c of Object.values(campeoes)) titulos.set(c, (titulos.get(c) ?? 0) + 1);
   const jogouLib = new Set(m.libertadores.flat());
@@ -190,7 +195,9 @@ export function virar(m: Mundo, t: Temporada): Resumo {
     const novaRep = limitar(c.reputacao + dRep, v.reputacao.min, v.reputacao.max);
     if (novaRep !== c.reputacao) reputacao[c.id] = novaRep - c.reputacao;
     c.reputacao = novaRep;
-    let pts = (m.torcidaPontos.get(c.id) ?? 0) + (titulos.get(c.id) ?? 0) * v.torcida.titulo + (jogouLib.has(c.id) ? v.torcida.libertadores : 0) + (caiu ? v.torcida.queda : 0);
+    const hm = m.memoria ? humorMedioDoAno(m.memoria, c.id) : null;
+    const dHumor = hm === null ? 0 : hm >= v.torcida.humorAlto ? 1 : hm <= v.torcida.humorBaixo ? -1 : 0;
+    let pts = (m.torcidaPontos.get(c.id) ?? 0) + (titulos.get(c.id) ?? 0) * v.torcida.titulo + (jogouLib.has(c.id) ? v.torcida.libertadores : 0) + (caiu ? v.torcida.queda : 0) + dHumor;
     if (Math.abs(pts) >= v.torcida.passo) {
       const d = Math.sign(pts);
       const tam = limitar((c.torcidaTamanho ?? 10) + d, v.torcida.min, v.torcida.max);
@@ -205,6 +212,13 @@ export function virar(m: Mundo, t: Temporada): Resumo {
   if (m.memoria?.financas.size) {
     const copas = fasesDasCopas(t.jogos, (id) => t.copas.find((c) => c.id === id)?.campeao() ?? null);
     financas = viradaContas(m.memoria, { ano: m.ano, clubes: m.clubes, tabelas: t.tabelas, copas, rng: criarRng(semearDeTexto(`${m.semente}-financas-${m.ano}`)) });
+  }
+  // 2. Metas, investidor, eleição e contrato do técnico (6ª fatia; depois das finanças, que guardam o retrato do ano).
+  if (m.memoria?.diretoria.size) {
+    viradaDiretoria(m.memoria, { ano: m.ano, dia: v.diasNoAno, tecnicos: m.tecnicos, entradas: entradas(m), tatica: m.tatica, clubesPorLiga: m.clubesPorLiga }, {
+      tabelas: t.tabelas, campeoes, rebaixados, copas: fasesDasCopas(t.jogos, (id) => t.copas.find((c) => c.id === id)?.campeao() ?? null),
+      rng: criarRng(semearDeTexto(`${m.semente}-diretoria-${m.ano}`)),
+    });
   }
   // 6. Pessoas: antes, o mercado (5ª fatia) devolve os emprestados, muda os pré-contratos e solta os contratos vencidos.
   const mem = m.memoria;

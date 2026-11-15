@@ -327,7 +327,7 @@ function subir(mem: Memoria, clube: string, j: Jogador, integracao: number): voi
 }
 
 /** Técnico novo (GDD-gestao 2 e 3): progresso das táticas pela metade, Respaldo inicial do novo técnico. */
-function trocarTecnico(g: ClubeGestao, novo: Tecnico, tatica: Tatica): void {
+export function trocarTecnico(g: ClubeGestao, novo: Tecnico, tatica: Tatica): void {
   g.tecnico = novo;
   g.semanas = tatica.estilos.find((s) => s.nome === novo.estilo)?.entrosamentoSemanas || 1;
   for (const t of g.treino.taticas.values()) t.progresso /= 2;

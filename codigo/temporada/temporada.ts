@@ -22,6 +22,14 @@ import { FINANCAS } from '../gestao/financas.ts';
 import { fecharMesContas, jogoNasContas } from './contas.ts';
 import type { ContextoMercado } from './mercado.ts';
 import { atualizarContexto, criarMercado, periodoDeMercado, registrarEscalaEuropa, semanaDeMercado } from './mercado.ts';
+import type { Tecnico } from '../motor/dados.ts';
+import type { FichaDiretoria } from '../gestao/diretoria.ts';
+import { TORCIDA, fatorCasa } from '../gestao/diretoria.ts';
+import { gerente, ocupacao } from '../gestao/financas.ts';
+import { modCasa } from '../motor/clima.ts';
+import { jogoEmCasa } from './contas.ts';
+import type { CtxDiretoria } from './diretoria.ts';
+import { copaNaDiretoria, inicioDoAno, jogoNaDiretoria, mesNaDiretoria, semanaNaDiretoria } from './diretoria.ts';
 
 export const LIGAS = ['serie-a', 'serie-b', 'argentina', 'colombia', 'chile'] as const;
 
@@ -75,6 +83,10 @@ export interface EntradaTemporada {
   comercial?: Comercial;
   /** Mercado (etapa 4, 5ª fatia); só com as comissões. */
   mercado?: ContextoMercado;
+  /** Diretorias (etapa 4, 6ª fatia; só no ano 1, com as comissões), técnicos do mundo (com os livres) e o ano da carreira. */
+  diretoria?: FichaDiretoria[];
+  tecnicos?: Tecnico[];
+  ano?: number;
 }
 
 export function simularTemporada(e: EntradaTemporada): Temporada {
@@ -82,7 +94,7 @@ export function simularTemporada(e: EntradaTemporada): Temporada {
   const rngDe = (s: string) => criarRng(semearDeTexto(`${e.semente}-${s}`));
   const dasLigas = ligas.flatMap((liga) => jogosDaLiga(liga, e.clubesPorLiga[liga], rngDe(`tabela-${liga}`)));
   const memoria = e.memoria ?? criarMemoria(e.elencos, [...ligas.flatMap((l) => e.clubesPorLiga[l]), ...(e.europeus ?? [])],
-    e.comissoes ? { comissoes: e.comissoes, entradas: e.entradas, tatica: e.tatica, nomes: e.nomes, comercial: e.comercial } : undefined);
+    e.comissoes ? { comissoes: e.comissoes, entradas: e.entradas, tatica: e.tatica, nomes: e.nomes, comercial: e.comercial, diretoria: e.diretoria } : undefined);
   const ligaDe = (id: string): string[] => ligas.map((l) => e.clubesPorLiga[l]).find((cs) => cs.includes(id)) ?? [];
   const comGestao = memoria.gestao.size > 0;
   if (comGestao && e.mercado) {
@@ -90,6 +102,18 @@ export function simularTemporada(e: EntradaTemporada): Temporada {
     else { memoria.mercado = criarMercado(e.mercado); registrarEscalaEuropa(memoria); }
   }
   const comMercado = !!memoria.mercado;
+  const comDiretoria = memoria.diretoria.size > 0;
+  const ctxDir: CtxDiretoria = { ano: e.ano ?? 1, dia: 1, tecnicos: e.tecnicos ?? [], entradas: e.entradas, tatica: e.tatica, clubesPorLiga: e.clubesPorLiga };
+  // Fator casa e vaia pelo Humor (GDD-gestao 9). PROVISORIO: sem conta (sul-americanos), o fator pela torcida × Humor ÷ 50.
+  const casa = (id: string, visitante: string, competicao: string, decisao: boolean, neutro: boolean): { fatorCasa?: number; vaia?: boolean } => {
+    const h = memoria.humor.get(id);
+    if (h === undefined || neutro) return {};
+    const clube = e.entradas[id].clube;
+    const c = memoria.financas.get(id);
+    const fc = c && TORCIDA.casaGdd ? fatorCasa(h, ocupacao(c, jogoEmCasa(memoria, c, competicao, clube, visitante, decisao, ligaDe), gerente(memoria.gestao.get(id)?.comissao).marketing, h))
+      : Math.min(2, modCasa(clube) * h / 50);
+    return { fatorCasa: fc, vaia: h <= TORCIDA.vaia };
+  };
 
   const copas: Copa[] = [];
   if (e.europeus) {
@@ -106,6 +130,8 @@ export function simularTemporada(e: EntradaTemporada): Temporada {
   for (let dia = 1; dia <= ultimoDia; dia++) {
     // Etapa 4, 3ª fatia: safra na semana 1 (GDD-gestao 5).
     if (dia === 1 && comGestao) novaSafra(memoria, rngDe('safra'));
+    ctxDir.dia = dia;
+    if (dia === 1 && comDiretoria) inicioDoAno(memoria, ctxDir);
     const doDia: (Jogo | JogoCopa)[] = dasLigas.filter((j) => j.dia === dia);
     for (const c of copas) doDia.push(...c.jogosDoDia(dia, rngDe(`${c.id}-${dia}`)));
     for (const j of doDia) {
@@ -127,7 +153,9 @@ export function simularTemporada(e: EntradaTemporada): Temporada {
         memoria.contagem.adaptacoes += 1;
         return aj.padrao;
       });
-      const entrada = (k: 0 | 1): EntradaTime => ({ ...e.entradas[lados[k]], elenco: prep[k].elenco, condicao: prep[k].condicao, poupados: prep[k].poupados, padrao: padrao[k] ?? e.entradas[lados[k]].padrao, apoio: prep[k].apoio, moral: prep[k].moral });
+      const decisao = !!jc && DECISAO.includes(jc.fase);
+      const entrada = (k: 0 | 1): EntradaTime => ({ ...e.entradas[lados[k]], elenco: prep[k].elenco, condicao: prep[k].condicao, poupados: prep[k].poupados, padrao: padrao[k] ?? e.entradas[lados[k]].padrao, apoio: prep[k].apoio, moral: prep[k].moral,
+        ...(k === 0 && comDiretoria ? casa(lados[0], lados[1], j.competicao, decisao, !!jc?.neutro) : {}) });
       const r = simularPartida({ mandante: entrada(0), visitante: entrada(1), tatica: e.tatica, semente, neutro: jc?.neutro });
       const [x, y] = r.estatisticas;
       const titulares = (k: 0 | 1): number => {
@@ -145,11 +173,12 @@ export function simularTemporada(e: EntradaTemporada): Temporada {
         const chave = `${lados[k]}>${lados[1 - k]}`;
         memoria.leituras.set(chave, lerJogo(r, k, memoria.leituras.get(chave)));
       }
-      const decisao = !!jc && DECISAO.includes(jc.fase);
       for (const k of [0, 1] as const) registrarJogo(memoria, lados[k], k, r, j.dia, j.competicao, prep[k].desfalques.suspensos, rngMem, decisao);
+      if (comDiretoria) for (const k of [0, 1] as const) jogoNaDiretoria(memoria, ctxDir, e.entradas[lados[k]].clube, lados[1 - k], r.placar[k], r.placar[1 - k]);
       if (memoria.financas.size) jogoNasContas(memoria, j.competicao, e.entradas[j.mandante].clube, j.visitante, r.placar, !!jc?.neutro, decisao, ligaDe);
       if (copa && jc) {
         copa.registrar(jc, res, penaltis);
+        if (comDiretoria) copaNaDiretoria(memoria, ctxDir, copa);
         // Título na temporada: +10 no alvo do Respaldo (GDD-gestao 3). Ligas terminam no fim do ano, sem ciclo depois.
         const campeao = copa.campeao();
         const gc = campeao ? memoria.gestao.get(campeao) : undefined;
@@ -165,7 +194,9 @@ export function simularTemporada(e: EntradaTemporada): Temporada {
     // Mercado (GDD-gestao 6): valor, relatórios e renovações a cada 4 semanas; janelas e livres toda semana.
     if (comMercado && dia % FINANCAS.diasMes === 0) periodoDeMercado(memoria, dia, rngDe(`mercado-periodo-${dia}`));
     if (comMercado && dia % 7 === 0) semanaDeMercado(memoria, dia, rngDe(`mercado-semana-${dia}`));
+    if (comDiretoria && comMercado && dia % 7 === 0) semanaNaDiretoria(memoria);
     if (memoria.financas.size && dia % FINANCAS.diasMes === 0 && dia <= FINANCAS.diasMes * FINANCAS.meses) fecharMesContas(memoria, dia, (id) => e.entradas[id].clube);
+    if (comDiretoria && dia % FINANCAS.diasMes === 0 && dia <= FINANCAS.diasMes * FINANCAS.meses) mesNaDiretoria(memoria, ctxDir);
   }
 
   const tabelas: Record<string, Linha[]> = {};

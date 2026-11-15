@@ -22,6 +22,9 @@ import type { Comercial, Conta, Marca } from '../gestao/financas.ts';
 import { criarConta } from '../gestao/financas.ts';
 import type { EstadoMercado } from './mercado.ts';
 import { quedaQuerSair, registrarNota } from './mercado.ts';
+import type { FichaDiretoria, Financeiro } from '../gestao/diretoria.ts';
+import type { ContagemDiretoria, EstadoDiretoria } from './diretoria.ts';
+import { criarDiretorias, novaContagemDiretoria } from './diretoria.ts';
 
 export const ENTRE_JOGOS = {
   /** GDD-gestao 1: tipo de ciclo pelos dias até o próximo jogo. */
@@ -88,6 +91,14 @@ export interface Memoria {
   marcas: Marca[];
   /** Etapa 4, 5ª fatia: mercado (null sem `mercado` na temporada). */
   mercado: EstadoMercado | null;
+  /** Etapa 4, 6ª fatia: diretoria (Confiança, metas, eleição) e Humor da torcida dos clubes não europeus; perfil financeiro de todos. */
+  diretoria: Map<string, EstadoDiretoria>;
+  humor: Map<string, number>;
+  financeiro: Map<string, Financeiro>;
+  dir: ContagemDiretoria;
+  /** Confrontos de copa já contados no ano e transferências já lidas. */
+  dirCopas: Set<string>;
+  dirTransf: number;
 }
 
 /** Jogos e treino do clube nos períodos de 4 e de 13 semanas e no ano. */
@@ -126,6 +137,8 @@ export interface DadosGestao {
   nomes?: Nomes;
   /** Finanças e comercial (4ª fatia); sem eles, sem contas. */
   comercial?: Comercial;
+  /** Diretorias (6ª fatia); sem elas, sem Confiança nem Humor. */
+  diretoria?: FichaDiretoria[];
 }
 
 /** Valores da comissão que a memória usa (efetivos com `gestao`, neutros sem). */
@@ -164,7 +177,7 @@ export function criarMemoria(elencos: Record<string, Jogador[]>, clubes: string[
       gestao.set(id, { comissao, tecnico: ent.tecnico, semanas, treino: criarTreino(chaveTatica(ent.tecnico), semanas), respaldo: respaldoInicial(ent.tecnico), jogos: 0, titulo: false });
     }
   }
-  return {
+  const mem: Memoria = {
     elencos: copia, jogadores, ultimoJogo: new Map(), leituras: new Map(), gestao,
     contagem: { lesoesTreino: 0, recaidas: 0, sequelas: 0, suspensoes: 0, semGoleiro: 0, adaptacoes: 0, leiturasCertas: 0, leiturasErradas: 0 },
     evolucao, base, periodo, nomes: dados?.nomes ?? new Nomes(Object.values(copia).flat()), seq: 0,
@@ -172,7 +185,10 @@ export function criarMemoria(elencos: Record<string, Jogador[]>, clubes: string[
     financas: new Map((dados?.comercial?.fichas ?? []).filter((f) => dados!.entradas[f.clubeId]).map((f) => [f.clubeId, criarConta(f, dados!.entradas[f.clubeId].clube)])),
     marcas: dados?.comercial?.marcas ?? [],
     mercado: null,
+    diretoria: new Map(), humor: new Map(), financeiro: new Map(), dir: novaContagemDiretoria(), dirCopas: new Set(), dirTransf: 0,
   };
+  if (dados?.diretoria) criarDiretorias(mem, dados.diretoria, clubes.join(','));
+  return mem;
 }
 
 export const novoPeriodo = (): PeriodoClube => ({ jogos28: 0, jogos91: 0, jogosAno: 0, treinoSoma: 0, ciclos: 0, focos: {} });

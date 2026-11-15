@@ -49,7 +49,7 @@ export const FINANCAS = {
   tvFixa: { 'serie-a': 4, 'serie-b': 1.5 } as Record<string, number>,
   /** Os 3 últimos da Série B: TV × 0,75 no ano seguinte. */
   ultimosB: { n: 3, fator: 0.75 },
-  /** PROVISORIO: o Humor da torcida chega na 6ª fatia; até lá vale 50. */
+  /** Humor neutro (sem diretoria na memória). */
   humor: 50,
   bilheteria: {
     humor: { base: 0.6, div: 125 },
@@ -110,9 +110,11 @@ export const FINANCAS = {
   perfil: { emergente: { anos: 5, torcida: 12 }, endividado: { reputacao: 15, divida: 1 }, rico: { reputacao: 16, torcida: 15, divida: 0.5 }, formador: { base: 14, vendas: 0.3 }, pequeno: 1 / 3 },
   /** PROVISORIO (gerador-comercial): orçamento = 75% do caixa (50% → 75% em 15/11/2026: 97% dos reforços cortados pelo orçamento), mínimo 2% da receita, 0 com caixa negativo; Gigante endividado até 2%. */
   orcamento: { caixa: 0.75, minimo: 0.02, endividado: 0.02 },
+  /** PROVISORIO (Gustavo, 15/11/2026): diretoria Gastadora com caixa positivo e aval ganha crédito de 15% da receita por ano para reforços (Gigante endividado e Pequeno não compram). */
+  credito: 0.15,
   /** PROVISORIO: teto de folha também limitado a esta fração da receita (0,7 → 0,85 em 14/11/2026: com 0,7 todos lucravam). */
   tetoReceita: 0.85,
-  teto: { 'Gigante rico': 1.2, Emergente: 1.3, 'Tradicional médio': 1.1, Formador: 1.1, 'Pequeno sobrevivente': 1.025, 'Gigante endividado': 0.95 } as Record<string, number>,
+  teto: { 'Gigante rico': 1.2, Emergente: 1.3, 'Tradicional médio': 1.1, Formador: 1.1, 'Pequeno sobrevivente': 1.025, 'Gigante endividado': 1.1 } as Record<string, number>,
 };
 
 /** Lançamentos do ano (R$ mi). */
@@ -167,6 +169,8 @@ export interface Conta {
   negativoSeguidos: number;
   negativo8: boolean;
   orcamento: number;
+  /** Linha de crédito do ano para reforços (diretoria Gastadora); o que passa do orçamento vira dívida. */
+  credito?: number;
   teto: number;
   receitaRef: number;
   liga: { pontos: number; saldo: number; jogos: number };
@@ -206,8 +210,8 @@ export function ocupacao(conta: Conta, jogo: JogoEmCasa, marketing: number, humo
 }
 
 /** Bilheteria de um jogo em casa (R$ mi), lançada na conta. */
-export function lancarBilheteria(conta: Conta, jogo: JogoEmCasa, g: ReturnType<typeof gerente>): number {
-  const v = (conta.capacidade * ocupacao(conta, jogo, g.marketing) * conta.ingresso) / 1e6 * (1 + (g.ingressos - 10) * FINANCAS.ingressos);
+export function lancarBilheteria(conta: Conta, jogo: JogoEmCasa, g: ReturnType<typeof gerente>, humor: number = FINANCAS.humor): number {
+  const v = (conta.capacidade * ocupacao(conta, jogo, g.marketing, humor) * conta.ingresso) / 1e6 * (1 + (g.ingressos - 10) * FINANCAS.ingressos);
   conta.ano.bilheteria += v;
   conta.caixa += v;
   return v;
@@ -231,10 +235,14 @@ export interface Mes {
   gerente: ReturnType<typeof gerente>;
   /** Níveis de CT e base acima dos iniciais (manutenção). */
   niveisAcima: number;
+  /** Humor da torcida (6ª fatia); sem ele, 50. */
+  humor?: number;
+  /** Aval da diretoria para o empréstimo (Confiança 40+, GDD-gestao 9); sem ele, aprovado. */
+  aval?: boolean;
 }
 
 /** Fechamento do mês (GDD-gestao 7). Devolve se a folha ficou atrasada e com quantos meses. */
-export function fecharMes(c: Conta, m: Mes): { atrasados: number } {
+export function fecharMes(c: Conta, m: Mes): { atrasados: number; avalNegado: boolean } {
   const F = FINANCAS;
   const a = c.ano;
   const tv = ((F.tvFixa[m.liga] ?? 0) + c.tvBonusInicial * (m.torcida / c.torcidaInicial)) * c.tvFator / F.meses;
@@ -249,11 +257,13 @@ export function fecharMes(c: Conta, m: Mes): { atrasados: number } {
   c.caixa += tv + pat + socios - manut - juros - folha - comissao - tecnico;
   // Sócios do mês seguinte: Humor e Marketing, até 3× a capacidade.
   const s = F.socios;
-  c.socios = Math.min(c.capacidade * s.maxCapacidade, c.socios * (1 + (F.humor - 50) * s.humor + (m.gerente.marketing - 10) * s.marketing));
+  c.socios = Math.min(c.capacidade * s.maxCapacidade, c.socios * (1 + ((m.humor ?? F.humor) - 50) * s.humor + (m.gerente.marketing - 10) * s.marketing));
   // IA: empréstimo bancário para zerar o caixa, até 30% da receita (Gustavo, 13/11/2026).
+  let avalNegado = false;
   if (c.caixa < 0) {
     const pede = Math.min(-c.caixa, Math.max(0, F.emprestimo * c.receitaRef - c.banco));
-    if (pede > 0) { c.caixa += pede; c.divida += pede; c.banco += pede; a.emprestimo += pede; }
+    if (pede > 0 && m.aval === false) avalNegado = true;
+    else if (pede > 0) { c.caixa += pede; c.divida += pede; c.banco += pede; a.emprestimo += pede; }
   }
   if (c.caixa < 0) {
     c.atrasados += 1;
@@ -263,7 +273,7 @@ export function fecharMes(c: Conta, m: Mes): { atrasados: number } {
   } else { c.atrasados = 0; c.negativoSeguidos = 0; }
   if (c.atrasados >= F.atraso.moralApos) a.mesesAtraso += 1;
   if (c.atrasados >= F.atraso.rescisao) a.mesesRescisao += 1;
-  return { atrasados: c.atrasados };
+  return { atrasados: c.atrasados, avalNegado };
 }
 
 /** Lugar na fase mais longe de cada copa → prêmio (R$ mi). */

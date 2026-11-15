@@ -42,7 +42,7 @@ export const modCasa = (c: Clube): number => limitar(PROVISORIO.fatorCasaBase + 
 
 /** Energia, moral, ímpeto, casa e lesão leve de um jogador. */
 export function calcularMod(e: Escalado, t: TimeEmCampo, difPlacar: number, bloco: number, impeto: number): number {
-  const casa = t.emCasa ? modCasa(t.clube) : 0;
+  const casa = t.emCasa ? t.casa ?? modCasa(t.clube) : 0;
   const racudo = temQualidade(e, 'Raçudo');
   const energia = racudo ? Math.min(0, modEnergia(e.energia) + 1) : modEnergia(e.energia);
   const lesao = e.lesao === 'leve' ? GDD.lesao.levePena : 0;

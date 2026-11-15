@@ -24,6 +24,9 @@ const embaralhar = <T>(xs: T[], rng: Rng): T[] => {
   for (let i = xs.length - 1; i > 0; i--) { const k = rng.int(0, i); [xs[i], xs[k]] = [xs[k], xs[i]]; }
   return xs;
 };
+import { DIRETORIA } from '../gestao/diretoria.ts';
+import { avalDaDiretoria, parteDasVendas } from './diretoria.ts';
+
 const CRIA = 'Cria da casa';
 /** PROVISORIO: moral de quem chega (GDD-gestao 3, recém-contratado). */
 const MORAL_CHEGADA = 65;
@@ -121,7 +124,7 @@ function perfilDe(mem: Memoria, clube: string): string {
 const caixaNegativo = (mem: Memoria, clube: string): boolean => (mem.financas.get(clube)?.caixa ?? 0) < 0;
 function orcamentoDe(mem: Memoria, clube: string): number {
   const c = mem.financas.get(clube);
-  if (c) return c.caixa < 0 ? 0 : c.orcamento;
+  if (c) return c.caixa < 0 ? 0 : c.orcamento + (c.credito ?? 0);
   return mem.mercado!.reduzidas.get(clube)?.orcamento ?? 0;
 }
 function tetoDe(mem: Memoria, clube: string): number {
@@ -404,7 +407,11 @@ function negociar(mem: Memoria, comprador: string, alvo: Alvo, teto: number, sem
     let aceitou = false;
     for (let r = 0; r < M.clube.rodadas; r++) {
       if (oferta > orc) break;
-      if (oferta >= minimo && rng.pct(chanceDoClube(oferta, pedido, aj))) { aceitou = true; break; }
+      if (oferta >= minimo && rng.pct(chanceDoClube(oferta, pedido, aj))) {
+        // Venda acima de 20% do orçamento precisa do aval da diretoria (Confiança 40+, GDD-gestao 9).
+        if (oferta > orcamentoDe(mem, vendedor) * DIRETORIA.confianca.avalVenda && !avalDaDiretoria(mem, vendedor)) { mem.dir.aval.venda += 1; break; }
+        aceitou = true; break;
+      }
       // Contraproposta: o comprador vê o pedido e sobe até o seu teto.
       const nova = Math.min(cap, orc, Math.max(oferta * 1.1, (oferta + pedido) / 2));
       if (r === M.clube.rodadas - 1 || nova <= oferta) { if (r === M.clube.rodadas - 1) { m.fechadas.add(`${comprador}>${j.id}`); m.contagem.fechadas += 1; } break; }
@@ -507,15 +514,22 @@ function concluir(mem: Memoria, j: Jogador, de: string | null, para: string, f: 
 
 function pagar(mem: Memoria, clube: string, total: number, valor: number, comissao: number): void {
   const c = mem.financas.get(clube);
-  if (c) { c.caixa -= total; c.orcamento = Math.max(0, c.orcamento - total); c.ano.compras += valor; c.ano.comissoes += comissao; return; }
+  if (c) {
+    // O que passa do orçamento sai do crédito do Gastador e vira dívida, sem passar pelo caixa.
+    const financia = Math.min(c.credito ?? 0, Math.max(0, total - c.orcamento));
+    if (financia > 0) { c.credito! -= financia; c.divida += financia; c.ano.emprestimo += financia; mem.dir.credito += financia; }
+    c.caixa -= total - financia; c.orcamento = Math.max(0, c.orcamento - (total - financia)); c.ano.compras += valor; c.ano.comissoes += comissao; return;
+  }
   const r = mem.mercado!.reduzidas.get(clube);
   if (r) r.orcamento = Math.max(0, r.orcamento - total);
 }
 function receber(mem: Memoria, clube: string, valor: number, cria: boolean): void {
   const c = mem.financas.get(clube);
-  if (c) { c.caixa += valor; c.orcamento += valor; c.ano.vendas += valor; if (cria) c.ano.vendasCrias += valor; return; }
+  // Parte das vendas que volta ao orçamento: Gastador 70% · Equilibrado 50% · Austero 30% (GDD-gestao 9).
+  const parte = parteDasVendas(mem, clube);
+  if (c) { c.caixa += valor; c.orcamento += valor * parte; c.ano.vendas += valor; if (cria) c.ano.vendasCrias += valor; return; }
   const r = mem.mercado!.reduzidas.get(clube);
-  if (r) r.orcamento += valor;
+  if (r) r.orcamento += valor * parte;
 }
 
 // ---------- Empréstimos (PROVISORIO, decisão de 13/11/2026) ----------

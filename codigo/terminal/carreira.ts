@@ -5,6 +5,7 @@ import { APOSENTADORIA, BASE, REPOSICAO } from '../gestao/base.ts';
 import { EVOLUCAO, PERFIL } from '../gestao/evolucao.ts';
 import { FINANCAS, PERFIS } from '../gestao/financas.ts';
 import { MERCADO } from '../gestao/mercado.ts';
+import { DIRETORIA, TORCIDA } from '../gestao/diretoria.ts';
 import { criarMundo, jogarAno, virar } from '../temporada/virada.ts';
 import { carregarBase } from './carregar.ts';
 
@@ -14,7 +15,7 @@ for (let i = 2; i < process.argv.length; i++) {
   const pedido = process.argv[++i] ?? '';
   const [caminho, valor] = pedido.split('=');
   const partes = caminho.split('.');
-  let alvo: Record<string, unknown> = { EVOLUCAO, BASE, APOSENTADORIA, PERFIL, REPOSICAO, FINANCAS, MERCADO };
+  let alvo: Record<string, unknown> = { EVOLUCAO, BASE, APOSENTADORIA, PERFIL, REPOSICAO, FINANCAS, MERCADO, DIRETORIA, TORCIDA };
   for (const p of partes.slice(0, -1)) alvo = (alvo?.[p] ?? null) as Record<string, unknown>;
   const chave = partes[partes.length - 1];
   const novo = Number(valor);
@@ -47,6 +48,8 @@ const livresNaVirada: number[] = [];
 const inicio = Date.now();
 const titulos = new Map<string, Record<string, number>>();
 let jogos = 0;
+const mando = [0, 0, 0];
+const BR = new Set(base.clubes.filter((c) => c.liga === 'serie-a' || c.liga === 'serie-b').map((c) => c.id));
 // Coorte (GDD-gestao 12, "jovem com minutos"): quem tinha 16 ou 17 anos nos primeiros anos, com 10%+ dos minutos
 // do clube em alguma temporada; quem nunca chega ao Potencial conta como "não chegou" na mediana.
 const coorte = new Map<string, { ano: number; minutos: boolean; chegou: number | null }>();
@@ -69,6 +72,7 @@ const acompanharCoorte = (i: number) => {
 for (let i = 0; i < anos; i++) {
   const t = jogarAno(m, semente, adaptacao);
   jogos += t.jogos.length;
+  for (const j of t.jogos) if (j.competicao === 'serie-a' || j.competicao === 'serie-b') mando[j.placar[0] > j.placar[1] ? 0 : j.placar[0] === j.placar[1] ? 1 : 2] += 1;
   acompanharCoorte(i);
   const r = virar(m, t);
   console.log(`\nAno ${r.ano}`);
@@ -139,6 +143,28 @@ if (m.memoria?.gestao.size) {
   console.log(`  Livres na virada: ${media(livresNaVirada)} (meta 60, 30 a 120) · idade média dos elencos ${antes.idade.toFixed(1)} → ${depois.idade.toFixed(1)}`);
   const tamanhos = Object.values(m.elencos).map((e) => e.length);
   console.log(`  Elencos: de ${Math.min(...tamanhos)} a ${Math.max(...tamanhos)} jogadores · base ${[...m.memoria.base.values()].reduce((a, b) => a + b.length, 0)} jovens`);
+}
+
+const md = m.memoria;
+if (md?.diretoria.size) {
+  const d = md.dir;
+  const pc = (a: number, b: number): string => `${((a / Math.max(1, b)) * 100).toFixed(0)}%`;
+  const med = (xs: number[]): number => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : NaN);
+  const br = d.saidas.filter((s) => BR.has(s.clube));
+  // Tempo no cargo: quem saiu e quem está no cargo no fim (contado até o fim da carreira), nos 30 brasileiros.
+  const noCargo = [...md.diretoria].filter(([c]) => BR.has(c)).map(([, st]) => anos - st.inicio);
+  const tempos = [...br.map((s) => s.anos), ...noCargo];
+  const metas = d.metas.Superou + d.metas.Cumpriu + d.metas.Falhou;
+  const niveis = d.niveis['Padrão'] + d.niveis['Ousada'] + d.niveis['Modesta'];
+  const total = mando[0] + mando[1] + mando[2];
+  console.log('\nDiretoria e torcida (GDD-gestao 12)');
+  console.log(`  Humor médio dos clubes: ${(d.humor.soma / Math.max(1, d.humor.n)).toFixed(1)} (meta 50, 42 a 58) · tempo com Humor até 10 ou 90+: ${pc(d.humor.extremo, d.humor.n)} (meta 5%, até 10%)`);
+  console.log(`  Técnicos demitidos por temporada nos 30 brasileiros: ${(br.filter((s) => s.motivo !== 'contrato').length / anos).toFixed(1)} (meta 7, 4 a 10) · saídas por contrato ${(br.filter((s) => s.motivo === 'contrato').length / anos).toFixed(1)} · novo dono ${(br.filter((s) => s.motivo === 'novo dono').length / anos).toFixed(1)} · nos 60 sul-americanos ${(d.saidas.filter((s) => s.motivo !== 'contrato').length / anos).toFixed(1)}`);
+  console.log(`  Tempo no cargo, média: ${med(tempos).toFixed(2)} temporadas (meta 2, 1,5 a 3) · só de quem saiu ${med(br.map((s) => s.anos)).toFixed(2)} · renovações por ano ${(d.renovacoes / anos).toFixed(1)}`);
+  console.log(`  Metas: superou ${pc(d.metas.Superou, metas)}, cumpriu ${pc(d.metas.Cumpriu, metas)}, falhou ${pc(d.metas.Falhou, metas)} · escolha Padrão ${pc(d.niveis['Padrão'], niveis)}, Ousada ${pc(d.niveis['Ousada'], niveis)}, Modesta ${pc(d.niveis['Modesta'], niveis)} · Confiança média na virada ${med(d.confiancaVirada).toFixed(1)}`);
+  console.log(`  Eleições ${d.eleicoes} (presidente novo ${d.presidentesNovos}) · meta do investidor: avaliações ${d.investidor.avaliacoes}, falhas corta ${d.investidor.corta}, troca ${d.investidor.troca}, vende ${d.investidor.vende} · SAFs novas com investidor ${d.investidor.safsNovas}`);
+  console.log(`  Aval negado (Confiança abaixo de 40): estrutura ${d.aval.estrutura}, empréstimo ${d.aval.emprestimo} meses, venda ${d.aval.venda} · compras no crédito do Gastador R$ ${(d.credito / anos).toFixed(1)} mi por ano`);
+  console.log(`  Mando nas Séries A e B: casa ${pc(mando[0], total)}, empate ${pc(mando[1], total)}, fora ${pc(mando[2], total)}`);
 }
 
 const mm = m.memoria?.mercado;

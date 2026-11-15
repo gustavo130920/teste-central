@@ -765,6 +765,14 @@ function narrarClima(st: Estado, i: 0 | 1, antes: number): void {
   } else if (v <= p.impetoNarraBaixo) registrar(st, 'impeto', 'Time apático', i, { resultado: 'apático' });
 }
 
+/** Torcida hostil (Humor até 25, GDD-gestao 9): em casa e perdendo, vaia no fim do bloco; Gelo não sente. */
+function vaiaDaTorcida(st: Estado, i: 0 | 1): void {
+  const t = st.t[i];
+  if (!t.vaia || !t.emCasa || st.placar[i] >= st.placar[1 - i]) return;
+  registrar(st, 'impeto', 'Vaia', i, { resultado: 'vaia' });
+  mudarMoral(t, t.escalados.filter((e) => !temQualidade(e, 'Gelo')), PROVISORIO.moralVaia);
+}
+
 function fimDeBloco(st: Estado, b: number, inicioImpeto: [number, number]): void {
   for (const i of [0, 1] as const) {
     st.t[i].ajusteFraco = false;
@@ -772,6 +780,7 @@ function fimDeBloco(st: Estado, b: number, inicioImpeto: [number, number]): void
     fogoPorContaPropria(st, i);
     tecnicoPerdeACabeca(st, i);
     narrarClima(st, i, inicioImpeto[i]);
+    vaiaDaTorcida(st, i);
     st.impeto[i] = decairImpeto(st.impeto[i]);
     if (b === GDD.blocoIntervalo) for (const e of st.t[i].escalados) e.energia = Math.min(100, e.energia + st.t[i].apoio.recuperacaoIntervalo);
   }

@@ -99,6 +99,10 @@ export interface TimeEmCampo {
   moral?: Record<string, number>;
   /** Respaldo de 15 a 39: o bloco depois de uma pausa com ajuste rende × 0,9 (GDD 7). */
   ajusteFraco: boolean;
+  /** Fator casa vindo da Gestão (Humor e ocupação, GDD-gestao 9); sem ele, o PROVISORIO pela torcida. */
+  casa?: number;
+  /** Torcida hostil (Humor até 25): vaia em casa no fim do bloco com o time perdendo (GDD-gestao 9). */
+  vaia?: boolean;
 }
 
 /** `padrao` troca instruções do time em relação ao estilo do técnico (GDD 5). */
@@ -116,6 +120,10 @@ export interface EntradaTime {
   apoio?: Partial<ApoioComissao>;
   /** Moral inicial por jogador (GDD-gestao 3); quem não estiver aqui começa com 60. */
   moral?: Record<string, number>;
+  /** Fator casa de 0 a +2 (GDD-gestao 9); sem ele, o PROVISORIO pela torcida. */
+  fatorCasa?: number;
+  /** Humor até 25: vaia em casa com o time perdendo. */
+  vaia?: boolean;
 }
 
 /** O que a comissão e o treino do ciclo entregam ao motor (GDD-gestao 2 e 8). */

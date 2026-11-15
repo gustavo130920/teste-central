@@ -104,7 +104,7 @@ export function montarTime(indice: 0 | 1, ent: EntradaTime, tatica: Tatica, rng:
   if (!goleiro) throw new Error(`${ent.clube.id}: sem goleiro`);
   const t: TimeEmCampo = {
     indice, clube: ent.clube, tecnico: ent.tecnico, estilo, padrao, notas: notasEfetivas(estilo, padrao), escalados, goleiro,
-    participantes: [...escalados], banco: escolherBanco(ent.elenco, onze, com), trocas: 0, tecnicoExpulso: false, emCasa: indice === 0, condicao: ent.condicao, moral: ent.moral, ajusteFraco: false,
+    participantes: [...escalados], banco: escolherBanco(ent.elenco, onze, com), trocas: 0, tecnicoExpulso: false, emCasa: indice === 0, condicao: ent.condicao, moral: ent.moral, ajusteFraco: false, casa: ent.fatorCasa, vaia: ent.vaia,
     presencaCom: [], presencaContra: [], efeitos: calcularEfeitos([], [], padrao),
     confronto: { pressaoSaida: 0, velocidadeCostas: 0, criacaoBloco: 0, viabilidade: 0 },
     apoio: { ...APOIO_NEUTRO, ...ent.apoio },

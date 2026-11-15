@@ -458,7 +458,7 @@ O atalho "Técnico" liga as áreas de campo, e o atalho "Gestor" liga as de neg�
 **Confiança no técnico.** De 0 a 100, começa em 60. Quedas × `(1,4 − Paciência ÷ 25)`, depois a Blindagem do diretor (seção 8).
 | Fato | Confiança |
 |---|---|
-| Vitória / derrota | +1 / -2 |
+| Vitória / derrota | +1 / -1 |
 | Clássico | Resultado × 2 |
 | 5 jogos seguidos sem vencer | -M |
 | Eliminação em copa fora da meta | -P |
@@ -505,7 +505,7 @@ Até 20: evento de ultimato. Em 0: demissão.
 
 Quedas: Gigante × 1,2 · Pequeno × 0,8. Em casa, com Humor até 25 e o time perdendo, há vaia (moral, motor seção 6).
 
-**Fator casa.** `2 × Humor ÷ 100 × ocupação`, de 0 a +2 (motor, seção 6).
+**Fator casa.** `fator pela torcida (motor, seção 6) × Humor ÷ 50`, de 0 a +2 (Gustavo, 15/11/2026: a fórmula com a ocupação baixava o mandante para 41%).
 
 **Contrato e Reputação do técnico.** Contrato de 1 a 3 anos; meta cumprida abre renovação. Reputação de 1 a 20: +1 por título de liga, copa ou Libertadores, -1 por demissão. Propostas de outros clubes chegam nas janelas e na virada.
 

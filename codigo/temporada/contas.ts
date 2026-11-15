@@ -9,6 +9,8 @@ import {
 import { quedaMoral } from '../gestao/comissao.ts';
 import type { Memoria } from './memoria.ts';
 import { folhaDoClube } from './mercado.ts';
+import { avalDaDiretoria } from './diretoria.ts';
+import type { JogoEmCasa } from '../gestao/financas.ts';
 
 // Com o mercado (5ª fatia), os empréstimos dividem o salário entre origem e destino.
 const folhaMil = (mem: Memoria, id: string): number => folhaDoClube(mem, id);
@@ -29,15 +31,16 @@ function subirEstrutura(mem: Memoria, clube: Clube, tipo: 'ct' | 'base'): void {
 }
 
 /** Depois de cada jogo: bilheteria do mandante (campo neutro não conta) e tabela da liga para o "mal na tabela". */
+/** O jogo em casa para a bilheteria e o fator casa (GDD-gestao 7 e 9). */
+export function jogoEmCasa(mem: Memoria, c: Conta, competicao: string, mandante: Clube, visitante: string, decisao: boolean, ligaDe: (id: string) => string[]): JogoEmCasa {
+  const outras = ligaDe(mandante.id).filter((id) => id !== mandante.id).map((id) => mem.financas.get(id)).filter((x): x is Conta => !!x);
+  return { classico: mandante.rivais.some((r) => r.clubeId === visitante), decisao, libertadores: competicao === 'libertadores', malNaTabela: malNaTabela(c, outras) };
+}
+
 export function jogoNasContas(mem: Memoria, competicao: string, mandante: Clube, visitante: string, placar: [number, number], neutro: boolean, decisao: boolean, ligaDe: (id: string) => string[]): void {
   const c = mem.financas.get(mandante.id);
   const liga = competicao === 'serie-a' || competicao === 'serie-b';
-  if (c && !neutro) {
-    const outras = ligaDe(mandante.id).filter((id) => id !== mandante.id).map((id) => mem.financas.get(id)).filter((x): x is Conta => !!x);
-    lancarBilheteria(c, {
-      classico: mandante.rivais.some((r) => r.clubeId === visitante), decisao, libertadores: competicao === 'libertadores', malNaTabela: malNaTabela(c, outras),
-    }, gerente(mem.gestao.get(mandante.id)?.comissao));
-  }
+  if (c && !neutro) lancarBilheteria(c, jogoEmCasa(mem, c, competicao, mandante, visitante, decisao, ligaDe), gerente(mem.gestao.get(mandante.id)?.comissao), mem.humor.get(mandante.id));
   if (!liga) return;
   const lados: [string, number][] = [[mandante.id, 0], [visitante, 1]];
   for (const [id, k] of lados) {
@@ -59,7 +62,8 @@ export function fecharMesContas(mem: Memoria, dia: number, clubes: (id: string) 
     for (const o of c.obras.filter((x) => x.dia <= dia)) subirEstrutura(mem, clube, o.tipo);
     c.obras = c.obras.filter((x) => x.dia > dia);
     const g = mem.gestao.get(id);
-    const r = fecharMes(c, { dia, liga: clube.liga, torcida: clube.torcidaTamanho ?? c.torcidaInicial, folhaMil: folhaMil(mem, id), comissaoMil: comissaoMil(mem, id), gerente: gerente(g?.comissao), niveisAcima: niveisAcima(c, clube) });
+    const r = fecharMes(c, { dia, liga: clube.liga, torcida: clube.torcidaTamanho ?? c.torcidaInicial, folhaMil: folhaMil(mem, id), comissaoMil: comissaoMil(mem, id), gerente: gerente(g?.comissao), niveisAcima: niveisAcima(c, clube), humor: mem.humor.get(id), aval: avalDaDiretoria(mem, id) });
+    if (r.avalNegado) mem.dir.aval.emprestimo += 1;
     // 2 meses ou mais sem pagar a folha: moral −M por mês (GDD-gestao 7), com o psicólogo (GDD-gestao 3).
     if (r.atrasados >= FINANCAS.atraso.moralApos) {
       const queda = FINANCAS.atraso.moral * (g ? quedaMoral(g.comissao) : 1);
@@ -161,7 +165,9 @@ export function viradaContas(mem: Memoria, w: MundoContas): ResumoFinancas {
     const tipo: 'ct' | 'base' = c.perfil === 'Formador' ? 'base' : 'ct';
     const atual = (tipo === 'ct' ? k.estruturaCT : k.estruturaBase) ?? 10;
     const obra = custoObra(atual + 1);
-    if (atual < F.estrutura.max && c.caixa > receita * F.estrutura.caixa && c.caixa >= obra) {
+    const quer = atual < F.estrutura.max && c.caixa > receita * F.estrutura.caixa && c.caixa >= obra;
+    if (quer && !avalDaDiretoria(mem, c.clubeId)) mem.dir.aval.estrutura += 1;
+    else if (quer) {
       c.caixa -= obra;
       h.lanc.obras += obra;
       c.obras.push({ tipo, dia: F.estrutura.dias });
@@ -169,6 +175,8 @@ export function viradaContas(mem: Memoria, w: MundoContas): ResumoFinancas {
     }
     amortizar(c, receita);
     orcamentoETeto(c, receita, folhaMil(mem, c.clubeId));
+    const compra = c.perfil !== 'Gigante endividado' && c.perfil !== 'Pequeno sobrevivente';
+    c.credito = compra && mem.financeiro.get(c.clubeId) === 'Gastador' && c.caixa >= 0 && avalDaDiretoria(mem, c.clubeId) ? receita * F.credito : 0;
     c.receitaRef = receita;
   }
   for (const c of contas) novoAnoConta(c);

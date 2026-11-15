@@ -9,6 +9,7 @@ import {
 import { lerFichas, lerMarcas, lerReduzidas } from './comercial.ts';
 import type { Comercial } from '../gestao/financas.ts';
 import { lerEmpresarios } from './empresarios.ts';
+import { lerDiretorias, lerDiretoriasReduzidas } from './diretoria.ts';
 
 const raiz = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const DADOS = join(raiz, 'dados');
@@ -77,6 +78,13 @@ for (const c of clubes.filter((x) => !x.reserva)) {
 // Empresários (gerador-empresarios): carteira ligada ao jogador pelo clube e pelo nome curto.
 const empresarios = ['brasil', 'america-do-sul', 'europa'].flatMap((r) => lerEmpresarios(ler('empresarios', `${r}.md`), clubes, elencos, rel));
 
+// Diretorias (gerador-diretoria): fichas completas dos brasileiros e reduzidas dos demais.
+const diretorias = [
+  ...['serie-a', 'serie-b'].flatMap((l) => lerDiretorias(ler('diretoria', `${l}.md`), l, clubes, rel)),
+  ...['argentina', 'colombia', 'chile', 'europa'].flatMap((l) => lerDiretoriasReduzidas(ler('diretoria', `${l}.md`), l, clubes, rel)),
+];
+for (const c of clubes.filter((x) => !x.reserva)) if (!diretorias.some((d) => d.clubeId === c.id)) avisos.push(`${c.id}: sem diretoria`);
+
 const tatica: Tatica = {
   estilos: lerEstilos(ler('tatica', 'estilos.md'), rel),
   formacoes: lerFormacoes(ler('tatica', 'formacoes.md'), rel),
@@ -112,6 +120,7 @@ gravar('comissao.json', { clubes: comissoes, livres: comissaoLivre });
 gravar('narracao.json', narracao);
 gravar('comercial.json', comercial);
 gravar('empresarios.json', empresarios);
+gravar('diretoria.json', diretorias);
 const contagem = {
   clubesCompetindo: competindo.length,
   clubesReserva: clubes.length - competindo.length,
@@ -133,6 +142,8 @@ const contagem = {
   marcas: comercial.marcas.length,
   empresarios: empresarios.length,
   clientes: empresarios.reduce((s, e) => s + e.clientes.length, 0),
+  diretorias: diretorias.length,
+  diretoriasCompletas: diretorias.filter((d) => d.metas).length,
 };
 gravar('_relatorio.json', { aviso: 'Gerado por conversor/converter.ts. Não edite gerado/ à mão.', contagem, problemas: rel.problemas, avisos });
 

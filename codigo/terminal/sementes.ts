@@ -26,7 +26,7 @@ const rodar = (s: number): Promise<string> => new Promise((ok, falha) => {
 
 const NUM = /-?\d+(?:\.\d+)?/g;
 // Só os blocos de medição; linhas de nomes (compradores, transferências) variam demais entre sementes.
-const SECOES = ['Elenco e mundo', 'Mercado (GDD', 'Finanças por perfil', 'Finanças gerais'];
+const SECOES = ['Elenco e mundo', 'Diretoria e torcida', 'Mercado (GDD', 'Finanças por perfil', 'Finanças gerais'];
 const FORA = /Maiores compradores|Maiores transferências|^\s+meta:/;
 function medicoes(saida: string): string[] {
   const linhas = saida.split('\n');
