@@ -1,8 +1,11 @@
 # Validação de dados
 
-Gerado pelo gerador `validador-dados`. **0 erros, 25 avisos.** Arquivo refeito a cada execução.
+Gerado pela skill `validador-dados`. **1 erros, 25 avisos.** Arquivo refeito a cada execução.
 
 ## Erros
+
+### eventos · total de itens (1)
+- eventos: 122 (esperado 120)
 
 ## Avisos
 

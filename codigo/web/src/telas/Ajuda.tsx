@@ -53,8 +53,8 @@ export function Ajuda({ aberta, aoFechar }: { aberta: boolean; aoFechar: () => v
           <h3 id="sobre" className="font-semibold">Sobre</h3>
           <p>Central do Técnico, versão {__VERSAO__} (nome provisório).</p>
           <p className="text-musgo">Obra de ficção: clubes, jogadores, técnicos, dirigentes, patrocinadores e imprensa são inventados; qualquer semelhança com nomes reais é coincidência.</p>
-          <p className="text-musgo">Privacidade: o jogo roda inteiro no seu navegador. Não há conta, não coleta nem envia dado, e as fontes e bibliotecas vêm junto do jogo. Os saves ficam no armazenamento local deste navegador; limpar os dados do site apaga os saves, então exporte uma cópia.</p>
-          <p className="text-musgo">Feito com React, PixiJS e shadcn/ui; fontes Barlow Semi Condensed e Doto (licença OFL). Bibliotecas sob licenças MIT e semelhantes.</p>
+          <p className="text-musgo">Privacidade: o jogo roda inteiro no seu navegador. Não há conta, anúncio nem rastreamento: não coleta nem envia dado, e as fontes e bibliotecas vêm junto do jogo. Os saves e duas preferências (ajuda vista e campo 2D) ficam no armazenamento local deste navegador, e os arquivos do jogo ficam em cache para funcionar sem internet. Limpar os dados do site apaga os saves, então exporte uma cópia.</p>
+          <p className="text-musgo">Feito com React, PixiJS e shadcn/ui; fontes Barlow Semi Condensed e Doto (licença OFL). Bibliotecas sob licenças MIT e semelhantes. <a className="underline underline-offset-2" href="./licencas.txt" target="_blank" rel="noopener noreferrer">Ver licenças completas</a>.</p>
         </section>
       </DialogContent>
     </Dialog>
