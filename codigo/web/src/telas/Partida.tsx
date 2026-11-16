@@ -6,7 +6,8 @@ import { Button } from '@/componentes/ui/button';
 import { Kbd } from '@/componentes/kbd';
 import { Spinner } from '@/componentes/spinner';
 import { Escolha, Secao, pct, rotuloJogo } from '@/componentes/Campo';
-import type { AjustePausa, EstatTela, FimJogo, InfoJogoTela, MarcacaoIndividual, Narrada, RespostaPausa, TelaPausa, Tom } from '@/nucleo/protocolo';
+import { Campo2D } from '@/componentes/Campo2D';
+import type { Lance2D, AjustePausa, EstatTela, FimJogo, InfoJogoTela, MarcacaoIndividual, Narrada, RespostaPausa, TelaPausa, Tom } from '@/nucleo/protocolo';
 import { PADRAO } from '@/lib/exibir';
 import { cn } from '@/lib/utils';
 
@@ -15,7 +16,7 @@ const MS_POR_LINHA = 1400;
 const VELOCIDADES = [1, 2, 4] as const;
 const semMovimento = () => typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-export interface AoVivoTela { jogo: InfoJogoTela; nomes: Record<string, string>; linhas: Narrada[]; pausa: TelaPausa | null; fim: FimJogo | null }
+export interface AoVivoTela { jogo: InfoJogoTela; nomes: Record<string, string>; linhas: Narrada[]; lances: Lance2D[]; pausa: TelaPausa | null; fim: FimJogo | null }
 
 function PlacarAoVivo({ v, placar, relogio, gol }: { v: AoVivoTela; placar: [number, number]; relogio: string; gol: boolean }) {
   const n = (id: string) => v.nomes[id] ?? id;
@@ -95,6 +96,13 @@ export function Partida({ v, ocupado, erro, aoResponder, aoVerFim }: { v: AoVivo
     if (!chegou) return;
     if (v.fim) { setEst(v.fim.estatisticas); setEstAte(null); } else if (v.pausa) { setEst(v.pausa.estatisticas); setEstAte(v.pausa.minuto); }
   }, [chegou, v.fim, v.pausa]);
+  // Campo 2D (5e): posições da última pausa; a bola segue o lance que está na narração.
+  const [campoVisivel, setCampoVisivel] = useState(() => { try { return localStorage.getItem('campo2d') !== 'oculto'; } catch { return true; } });
+  const alternarCampo = () => setCampoVisivel((c) => { try { localStorage.setItem('campo2d', c ? 'oculto' : 'visivel'); } catch { /* sem armazenamento */ } return !c; });
+  const pausaRef = useRef<TelaPausa | null>(null);
+  if (v.pausa) pausaRef.current = v.pausa;
+  const minutoAtual = ult ? parseInt(ult.minuto, 10) : 0;
+  const lanceAtual = ult ? [...v.lances].reverse().find((l) => l.minuto <= minutoAtual && l.bloco <= ult.bloco) ?? null : null;
   const botaoFim = useRef<HTMLButtonElement>(null);
   useEffect(() => { if (chegou && v.fim) botaoFim.current?.focus(); }, [chegou, v.fim]);
 
@@ -108,8 +116,19 @@ export function Partida({ v, ocupado, erro, aoResponder, aoVerFim }: { v: AoVivo
             {VELOCIDADES.map((x) => (
               <Button key={x} size="sm" variant={vel === x ? 'default' : 'secondary'} aria-pressed={vel === x} onClick={() => setVel(x)}>{x}x <Kbd keys={[String(x)]} className="ml-1" /></Button>
             ))}
+            <Button size="sm" variant="ghost" aria-pressed={campoVisivel} onClick={alternarCampo}>{campoVisivel ? 'Ocultar campo' : 'Mostrar campo'}</Button>
             <Button size="sm" variant="secondary" disabled={chegou} onClick={() => setMostradas(total)}>{v.fim ? 'Pular até o fim' : 'Pular até a pausa'} <Kbd keys={['P']} className="ml-1" /></Button>
           </div>
+          {campoVisivel && pausaRef.current && (
+            <Campo2D meu={pausaRef.current.emCampo} rival={pausaRef.current.rival} lado={v.jogo.lado} lance={lanceAtual} gol={!!ult?.gol && !chegou} velocidade={vel} />
+          )}
+          {campoVisivel && pausaRef.current && (
+            <p className="-mt-1 flex flex-wrap gap-x-4 text-xs text-musgo">
+              <span><span aria-hidden className="mr-1 inline-block size-2.5 rounded-full bg-led align-middle" />{v.nomes[v.jogo.mandante]} (ataca para a direita)</span>
+              <span><span aria-hidden className="mr-1 inline-block size-2.5 rounded-full bg-[#7fb8e6] align-middle" />{v.nomes[v.jogo.visitante]}</span>
+              <span>Posições por zona, como na formação.</span>
+            </p>
+          )}
           <Narracao linhas={visiveis} nomes={v.nomes} jogo={v.jogo} viva />
           {chegou && v.fim && (
             <Button ref={botaoFim} size="lg" className="h-12 text-base font-semibold" onClick={aoVerFim}>Apito final: ver o resultado</Button>

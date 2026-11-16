@@ -44,13 +44,13 @@ export default function App() {
     if (e.tipo === 'painel') { setPainel(e.painel); setPilha(['painel']); return; }
     if (e.tipo === 'prejogo') { setPre(e.pre); setAoVivo(null); setPilha(['painel', 'prejogo']); return; }
     if (e.tipo === 'pausa') {
-      setAoVivo((v) => ({ jogo: e.jogo, nomes: e.nomes, linhas: [...(v?.linhas ?? []), ...e.linhas], pausa: e.pausa, fim: null }));
+      setAoVivo((v) => ({ jogo: e.jogo, nomes: e.nomes, linhas: [...(v?.linhas ?? []), ...e.linhas], lances: [...(v?.lances ?? []), ...e.campo], pausa: e.pausa, fim: null }));
       setPilha(['painel', 'partida']);
       return;
     }
     setPainel(e.painel);
     // Simulado (direto ou o resto): a narração vem inteira e a tela vai ao resultado.
-    setAoVivo((v) => ({ jogo: e.jogo, nomes: e.nomes, linhas: simulando || !v ? e.linhas : [...v.linhas, ...e.linhas], pausa: null, fim: e.fim }));
+    setAoVivo((v) => ({ jogo: e.jogo, nomes: e.nomes, linhas: simulando || !v ? e.linhas : [...v.linhas, ...e.linhas], lances: simulando || !v ? e.campo : [...v.lances, ...e.campo], pausa: null, fim: e.fim }));
     setPilha(['painel', simulando ? 'fim' : 'partida']);
   };
   const pedindo = useRef(false);

@@ -288,7 +288,7 @@ export interface InfoJogoTela {
 }
 
 export interface JogadorTela { id: string; nome: string; posicao: string; nota: number; condicao?: number; atributos?: Record<string, number>; tracos?: string[] }
-export interface VagaTela { id: string; nome: string; vaga: string; condicao?: number }
+export interface VagaTela { id: string; nome: string; vaga: string; condicao?: number; /** Zona da formação (5e), no ponto de vista do próprio ataque. */ zona?: string }
 
 export interface TaticaTela { nome: string; estilo: string; formacaoComBola: string; formacaoSemBola: string; entrosamento: number; ajustes: string[]; instrucoes: number; batedores: Batedores; onze: VagaTela[] }
 
@@ -315,11 +315,15 @@ export interface EscolhaPreJogo {
 
 export interface Narrada { bloco: number; minuto: string; voz: 'N' | 'C'; texto: string; tema: string; placar: [number, number]; time: 0 | 1; gol: boolean }
 
+/** Lance para o 2D (5e): zonas no ponto de vista de quem ataca (`time`), como o motor registra. */
+export interface Lance2D { bloco: number; minuto: number; time: 0 | 1; tema: string; lance: string; de: string | null; para: string | null; resultado: string }
+
 export interface EstatTela { gols: number; finalizacoes: number; noAlvo: number; posse: number; escanteios: number; faltas: number; amarelos: number; vermelhos: number; impedimentos: number }
 
 export interface OpcaoInstrucaoTela { id: string; nome: string; encaixe: number; contraria: boolean; combina: boolean; auxiliar: boolean; exige: string | null }
 
 export interface EmCampoTela {
+  zona: string;
   id: string;
   nome: string;
   vaga: string;
@@ -382,8 +386,8 @@ export type Etapa =
   | { tipo: 'painel'; painel: Painel }
   | { tipo: 'decisao'; decisao: DecisaoTela; painel: Painel }
   | { tipo: 'prejogo'; pre: PreJogo }
-  | { tipo: 'pausa'; jogo: InfoJogoTela; nomes: Record<string, string>; linhas: Narrada[]; pausa: TelaPausa }
-  | { tipo: 'fim'; jogo: InfoJogoTela; nomes: Record<string, string>; linhas: Narrada[]; fim: FimJogo; painel: Painel };
+  | { tipo: 'pausa'; jogo: InfoJogoTela; nomes: Record<string, string>; linhas: Narrada[]; campo: Lance2D[]; pausa: TelaPausa }
+  | { tipo: 'fim'; jogo: InfoJogoTela; nomes: Record<string, string>; linhas: Narrada[]; campo: Lance2D[]; fim: FimJogo; painel: Painel };
 
 export interface Pedidos {
   clubes: { pede: void; volta: ClubeResumo[] };

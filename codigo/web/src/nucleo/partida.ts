@@ -103,7 +103,20 @@ export const parcial = (info: InfoPausa, a: AoVivo) => ({ times: timesDe(info), 
 
 // ---------- Pausa ----------
 
+/** Zona da formação de cada escalado (5e): a primeira peça livre da mesma posição, no ponto de vista do próprio ataque. */
+function zonasDoTime(c: Contexto, t: TimeEmCampo): string[] {
+  const pecas = (c.tatica.formacoes.find((f) => f.nome === t.formacaoComBola)?.pecas ?? []).map((p) => ({ ...p, usada: false }));
+  return t.escalados.map((e) => {
+    const pos = e === t.goleiro ? 'GOL' : e.vaga;
+    const p = pecas.find((x) => !x.usada && x.posicao === pos) ?? pecas.find((x) => !x.usada);
+    if (p) p.usada = true;
+    return p?.zona ?? 'CE3';
+  });
+}
+
 export function telaPausa(c: Contexto, info: InfoPausa): TelaPausa {
+  const zt = zonasDoTime(c, info.time);
+  const zr = zonasDoTime(c, info.rival);
   const t = info.time;
   const x: TaticaSalva = { nome: '', estilo: t.estilo.nome, formacaoComBola: t.formacaoComBola, formacaoSemBola: t.formacaoSemBola, padrao: { ...t.padrao }, instrucoes: {}, batedores: {} };
   const opcoes = (e: TimeEmCampo['escalados'][number], fase: 'Com' | 'Sem') => opcoesNaVaga(e.j, e.vaga, fase, c.tatica, x).map((o) => ({
@@ -116,13 +129,13 @@ export function telaPausa(c: Contexto, info: InfoPausa): TelaPausa {
     adversario: info.times[info.lado === 0 ? 1 : 0].ajustes, extras: info.extras, sugestoes: info.sugestoes,
     estilo: t.estilo.nome, formacaoComBola: t.formacaoComBola, formacaoSemBola: t.formacaoSemBola,
     padrao: { ...t.padrao } as Record<string, string>, marcacao: t.marcacao ?? null, trocasRestantes: info.trocasRestantes,
-    emCampo: t.escalados.map((e) => ({
-      id: e.j.id, nome: e.j.nome, vaga: e === t.goleiro ? 'GOL' : e.vaga, goleiro: e === t.goleiro, energia: Math.round(e.energia), amarelos: e.amarelos,
+    emCampo: t.escalados.map((e, i) => ({
+      zona: zt[i], id: e.j.id, nome: e.j.nome, vaga: e === t.goleiro ? 'GOL' : e.vaga, goleiro: e === t.goleiro, energia: Math.round(e.energia), amarelos: e.amarelos,
       lesao: e.lesao, instrCom: e.instrCom?.nome ?? null, instrSem: e.instrSem?.nome ?? null,
       opcoes: e === t.goleiro ? null : { Com: opcoes(e, 'Com'), Sem: opcoes(e, 'Sem') },
     })),
     banco: t.banco.map((j): JogadorTela => ({ id: j.id, nome: j.nome, posicao: j.posicao, nota: j.nota, condicao: Math.round(t.condicao?.[j.id] ?? 100) })),
-    rival: info.rival.escalados.map((e) => ({ id: e.j.id, nome: e.j.nome, vaga: e === info.rival.goleiro ? 'GOL' : e.vaga })),
+    rival: info.rival.escalados.map((e, i) => ({ id: e.j.id, nome: e.j.nome, vaga: e === info.rival.goleiro ? 'GOL' : e.vaga, zona: zr[i] })),
     estilos: c.tatica.estilos.map((s) => s.nome),
     formacoes: c.tatica.formacoes.map((f) => f.nome),
     planoB: opcoesPlanoB(c.mem, c.clube, t).map((o) => ({ nome: o.tatica.nome, estilo: o.tatica.estilo, formacaoComBola: o.tatica.formacaoComBola, formacaoSemBola: o.tatica.formacaoSemBola, entrosamento: o.entrosamento, planoB: o.planoB, perda: o.perda })),

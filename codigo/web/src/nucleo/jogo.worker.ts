@@ -27,7 +27,8 @@ import { estadoTatica, progressoDe } from '../../../temporada/taticaJogador.ts';
 import { assumirClube, criarTecnicoDoJogador } from '../../../temporada/jogador.ts';
 import { carregar, salvar } from '../../../temporada/salvamento.ts';
 import { comprimir, descomprimir, apagar, gravar, ler, listar } from './saves.ts';
-import type { DiretoriaTela, DecisaoTela, RespostaDecisao, FiltroTela, MercadoTela, NegTela, PedidoMercado, ResultadoMercado, TermosTela, VistoTela, BaseTela, ComercialTela, PedidoBase, PedidoComercial, ResultadoBase, ResultadoComercial, Carga, Foco, ElencoTela, TreinoTela, ClubeResumo, Etapa, EscolhaPreJogo, RespostaPausa, InfoSlot, JogoTela, NovoJogo, Painel, Pedido, Pedidos, Resposta, ResumoVirada, Slot, TipoPedido } from './protocolo.ts';
+import type { Lance } from '../../../motor/tipos.ts';
+import type { Lance2D, DiretoriaTela, DecisaoTela, RespostaDecisao, FiltroTela, MercadoTela, NegTela, PedidoMercado, ResultadoMercado, TermosTela, VistoTela, BaseTela, ComercialTela, PedidoBase, PedidoComercial, ResultadoBase, ResultadoComercial, Carga, Foco, ElencoTela, TreinoTela, ClubeResumo, Etapa, EscolhaPreJogo, RespostaPausa, InfoSlot, JogoTela, NovoJogo, Painel, Pedido, Pedidos, Resposta, ResumoVirada, Slot, TipoPedido } from './protocolo.ts';
 
 const arquivos = import.meta.glob('../../../gerado/*.json', { eager: true, import: 'default' }) as Record<string, unknown>;
 /** Base nova a cada jogo: a carreira muda elencos e fichas (o mundo não copia tudo). */
@@ -107,7 +108,7 @@ type EntradaLog = { tipo: 'pre'; e: EscolhaPreJogo } | { tipo: 'pausa'; r: Respo
 /** Ciclo em andamento: do Avançar até o fim da partida do clube do jogador (ou da semana). */
 let ciclo: { it: DiaEmPassos; aoVivo: AoVivo | null; snap: string; log: EntradaLog[]; reproduz: EntradaLog[] | null; narradosPend: number } | null = null;
 /** Virada pendente de uma decisão (renovação ou patrocínio): o mundo antes de fechar o ano. */
-let viradaPend: { snap: string; a: AoVivo | null; linhas: ReturnType<typeof novasLinhas> } | null = null;
+let viradaPend: { snap: string; a: AoVivo | null; linhas: ReturnType<typeof novasLinhas>; campo: Lance2D[] } | null = null;
 /** Respostas dadas às decisões, na ordem em que o motor pergunta (o motor é determinístico). */
 let decisoes: unknown[] = [];
 let nDec = 0;
@@ -162,6 +163,12 @@ function contexto(w: Mundo): Contexto {
 }
 
 const nomesDe = (w: Mundo) => Object.fromEntries(w.clubes.map((x) => [x.id, x.nomeCurto]));
+
+/** Lances dos blocos ainda não mostrados, para o 2D (junto com a narração; a mesma janela de blocos). */
+function lances2d(a: AoVivo, ate: number, lances: Lance[] = a.lances): Lance2D[] {
+  return lances.filter((l) => l.bloco > a.narrados && l.bloco <= ate && l.zonaOrigem !== null)
+    .map((l) => ({ bloco: l.bloco, minuto: l.minuto, time: l.time, tema: l.tema, lance: l.lance, de: l.zonaOrigem, para: l.zonaDestino, resultado: l.resultado }));
+}
 
 function criarCiclo(w: Mundo) {
   const s = w.emAndamento ?? iniciarAno(w, extra.semente);
@@ -250,23 +257,26 @@ async function conduzir(resposta: RespostaDoDia | undefined): Promise<Etapa> {
     if (a.simular) { r = proximo(null); continue; }
     const e = c.reproduz?.shift();
     if (e?.tipo === 'pausa') { if (e.r.simularResto) a.simular = true; r = proximo(ajusteDaResposta(ctx, v.info, e.r)); continue; }
-    return { tipo: 'pausa', jogo: a.jogo, nomes: nomesDe(w), linhas: novasLinhas(ctx, a, parcial(v.info, a), v.info.minuto / 15), pausa: telaPausa(ctx, v.info) };
+    const campo = lances2d(a, v.info.minuto / 15);
+    return { tipo: 'pausa', jogo: a.jogo, nomes: nomesDe(w), linhas: novasLinhas(ctx, a, parcial(v.info, a), v.info.minuto / 15), campo, pausa: telaPausa(ctx, v.info) };
   }
   ciclo = null;
   ultimos = p.value;
   const a = c.aoVivo;
   let linhas: ReturnType<typeof novasLinhas> = [];
+  let campo: Lance2D[] = [];
   if (a?.final) {
     if (a.simular) a.narrados = 0;
+    campo = lances2d(a, 99, a.final.r.lances);
     linhas = novasLinhas(contexto(w), a, a.final.r, 99);
   }
   decisoes = [];
   nDec = 0;
-  return terminar(a, linhas);
+  return terminar(a, linhas, campo);
 }
 
 /** Fim do ciclo: vira o ano, se acabou, e monta a etapa final. */
-async function terminar(a: AoVivo | null, linhas: ReturnType<typeof novasLinhas>): Promise<Etapa> {
+async function terminar(a: AoVivo | null, linhas: ReturnType<typeof novasLinhas>, campo: Lance2D[]): Promise<Etapa> {
   let w = exigir();
   const s = w.emAndamento!;
   if (s.fim) {
@@ -279,7 +289,7 @@ async function terminar(a: AoVivo | null, linhas: ReturnType<typeof novasLinhas>
       iniciarAno(w, extra.semente);
     } catch (e) {
       if (!(e instanceof Pendencia)) throw e;
-      viradaPend = { snap, a, linhas };
+      viradaPend = { snap, a, linhas, campo };
       return etapaDecisao(e.pedido, snap);
     }
     viradaPend = null;
@@ -290,7 +300,7 @@ async function terminar(a: AoVivo | null, linhas: ReturnType<typeof novasLinhas>
     w = exigir();
   }
   const pn = painel(w);
-  if (a?.final) return { tipo: 'fim', jogo: a.jogo, nomes: pn.nomes, linhas, fim: fimJogo(a, ultimos), painel: pn };
+  if (a?.final) return { tipo: 'fim', jogo: a.jogo, nomes: pn.nomes, linhas, campo, fim: fimJogo(a, ultimos), painel: pn };
   return { tipo: 'painel', painel: pn };
 }
 
@@ -327,7 +337,7 @@ async function responderDecisao(r: RespostaDecisao): Promise<Etapa> {
   if (viradaPend) {
     const v = viradaPend;
     restaurar(v.snap);
-    return terminar(v.a, v.linhas);
+    return terminar(v.a, v.linhas, v.campo);
   }
   const c = ciclo!;
   // O mundo já voltou ao início do ciclo (etapaDecisao): refaz com o que foi escolhido até aqui.
