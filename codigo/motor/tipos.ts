@@ -108,6 +108,10 @@ export interface TimeEmCampo {
   instrucoes?: InstrucoesManuais;
   /** Batedores da tática (GDD 8); sem eles, o maior BP em campo. */
   batedores?: Batedores;
+  /** Marcação individual (5b3): vale enquanto os dois estão em campo. */
+  marcacao?: MarcacaoIndividual;
+  /** Zona do alvo, na visão deste time, fixada no início do bloco (5b3). */
+  zonaDoAlvo?: number;
   /** Fator casa vindo da Gestão (Humor e ocupação, GDD-gestao 9); sem ele, o PROVISORIO pela torcida. */
   casa?: number;
   /** Torcida hostil (Humor até 25): vaia em casa no fim do bloco com o time perdendo (GDD-gestao 9). */
@@ -116,6 +120,8 @@ export interface TimeEmCampo {
 
 /** Id da instrução por jogador e fase (5b1). Vale enquanto ele joga numa vaga da instrução e a exigência está cumprida. */
 export type InstrucoesManuais = Record<string, { Com?: string; Sem?: string }>;
+/** Marcação individual (5b3): sem a bola, o marcador segue a zona do alvo e ganha pontos nos duelos com ele. Ids dos jogadores. */
+export interface MarcacaoIndividual { marcador: string; alvo: string }
 export type TipoBatedor = 'escanteio' | 'falta' | 'penalti';
 /** Id do jogador por cobrança (GDD 8). */
 export type Batedores = Partial<Record<TipoBatedor, string>>;
@@ -147,6 +153,8 @@ export interface EntradaTime {
   instrucoes?: InstrucoesManuais;
   /** Batedores (5b1); sem eles, o maior BP em campo. */
   batedores?: Batedores;
+  /** Marcação individual (5b3); a IA não usa. */
+  marcacao?: MarcacaoIndividual;
 }
 
 /** O que a comissão e o treino do ciclo entregam ao motor (GDD-gestao 2 e 8). */
@@ -193,6 +201,8 @@ export interface AjustePausa {
   instrucoes?: Record<string, { Com?: string | null; Sem?: string | null }>;
   /** Batedores novos (Plano B de uma tática salva); substituem todos. */
   batedores?: Batedores;
+  /** Marcação individual (5b3, ajuste leve); null tira a que houver. */
+  marcacao?: MarcacaoIndividual | null;
   trocas?: [string, string][];
   fala?: Tom;
   sugestoes?: number[];
@@ -210,6 +220,8 @@ export interface InfoPausa {
   /** Lances do bloco que acabou. */
   lances: Lance[];
   time: TimeEmCampo;
+  /** Adversário em campo, para escolher o alvo da marcação individual (5b3). */
+  rival: TimeEmCampo;
   trocasRestantes: number;
 }
 export interface ControlePausa {

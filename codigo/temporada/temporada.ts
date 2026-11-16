@@ -197,7 +197,7 @@ export function simularTemporada(e: EntradaTemporada): Temporada {
         memoria.contagem.adaptacoes += 1;
         return aj.padrao;
       });
-      const entrada = (k: 0 | 1): EntradaTime => ({ ...(impeto[k] ? { impeto: impeto[k] } : {}), ...(plano[k]?.titulares ? { titulares: plano[k]!.titulares } : {}), ...(plano[k]?.instrucoes ? { instrucoes: plano[k]!.instrucoes } : {}), ...(plano[k]?.batedores ? { batedores: plano[k]!.batedores } : {}), ...e.entradas[lados[k]], elenco: prep[k].elenco, condicao: prep[k].condicao, poupados: prep[k].poupados, padrao: padrao[k] ?? e.entradas[lados[k]].padrao, apoio: prep[k].apoio, moral: prep[k].moral,
+      const entrada = (k: 0 | 1): EntradaTime => ({ ...(impeto[k] ? { impeto: impeto[k] } : {}), ...(plano[k]?.titulares ? { titulares: plano[k]!.titulares } : {}), ...(plano[k]?.instrucoes ? { instrucoes: plano[k]!.instrucoes } : {}), ...(plano[k]?.batedores ? { batedores: plano[k]!.batedores } : {}), ...(plano[k]?.marcacao ? { marcacao: plano[k]!.marcacao } : {}), ...e.entradas[lados[k]], elenco: prep[k].elenco, condicao: prep[k].condicao, poupados: prep[k].poupados, padrao: padrao[k] ?? e.entradas[lados[k]].padrao, apoio: prep[k].apoio, moral: prep[k].moral,
         ...(k === 0 && comDiretoria ? casa(lados[0], lados[1], j.competicao, decisao, !!jc?.neutro) : {}) });
       const kj = ([0, 1] as const).find((k) => ehDoJogador(lados[k]));
       const controle = kj !== undefined && J!.pausa ? controleDaPausa(memoria, lados[kj], kj, (info) => J!.pausa!(info, { dia: j.dia, competicao: j.competicao, adversario: lados[1 - kj], casa: kj === 0 && !jc?.neutro, classico, decisao }, memoria)) : undefined;

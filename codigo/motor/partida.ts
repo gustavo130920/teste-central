@@ -3,12 +3,12 @@ import { bonusGol, calcularConfronto, pontosElo } from './confronto.ts';
 import { bonusEnsaiada, chanceBolaChega, chanceDueloAereo, chancePenalti, chancesCartao, escolherBatedor, limiarDividida, melhoresNoAlto } from './bolaparada.ts';
 import { chanceDisputa, chanceGol, lerAtributo, limitar, modTraco, penaFirula, pesoDefeito, valorAcao, valorJogador } from './disputa.ts';
 import { aplicarImpeto, atualizarMods, calcularMod, decairImpeto, gastoBloco, mudarMoral, temQualidade } from './clima.ts';
-import { escolherAsDuas, montarTime, prepararTime, retirarExpulso, retirarLesionado, substituir, trocarFormacao } from './escalacao.ts';
+import { escolherAsDuas, marcacaoAtiva, montarTime, prepararTime, retirarExpulso, retirarLesionado, substituir, trocarFormacao } from './escalacao.ts';
 import { chanceLesao, chanceLesaoFaltaDura, semanasFora, sortearGravidade } from './lesoes.ts';
 import { chanceForaDePosicao } from './plano.ts';
 import type { Decisao } from './pausas.ts';
 import { atacarBrecha, custoTroca, decidirReacao, escolherTrocas, falaDoJogador, falaIntervalo, mudarDegrau, reverterEixo, tonsCertos } from './pausas.ts';
-import { GDD, PLANO_B, PROVISORIO, RESPALDO } from './parametros.ts';
+import { GDD, MARCACAO, PLANO_B, PROVISORIO, RESPALDO } from './parametros.ts';
 import { NOTA, fecharNotas, pontuarLance } from './notas.ts';
 import type { Acao, AcaoDisputa, TipoChute } from './parametros.ts';
 import { criarRng, semearDeTexto } from './rng.ts';
@@ -101,6 +101,15 @@ function marcacao(st: Estado, atk: TimeEmCampo, def: TimeEmCampo, z: number, elo
   // Zona vazia: marca quem está na zona vizinha, sem contar nos números (GDD 3, aprovado em 09/11/2026).
   const vizinhos = def.escalados.filter((e) => e !== def.goleiro && distancia(zonaDefensor(e, elo, transicao), z) === 1);
   return { marcador: vizinhos.length ? st.rng.um(vizinhos) : null, n: 0 };
+}
+
+/** Marcação individual (5b3): no lance do alvo, o marcador assume se está perto e ganha pontos no duelo. Não sorteia nada. */
+function marcarAlvo(atk: TimeEmCampo, def: TimeEmCampo, m: { marcador: Escalado | null; n: number }, envolvido: Escalado | null, d: number, elo: number, transicao: boolean): { m: { marcador: Escalado | null; n: number }; bonus: number } {
+  const mi = marcacaoAtiva(def, atk);
+  if (!mi || mi.alvo !== envolvido) return { m, bonus: 0 };
+  if (m.marcador === mi.marcador) return { m, bonus: MARCACAO.bonus };
+  if (distancia(zonaDefensor(mi.marcador, elo, transicao), d) > MARCACAO.alcance) return { m, bonus: 0 };
+  return { m: { marcador: mi.marcador, n: m.n }, bonus: MARCACAO.bonus };
 }
 
 function maisProximo(st: Estado, grupo: Escalado[], pos: (e: Escalado) => number, z: number): Escalado {
@@ -658,8 +667,8 @@ function simularCadeia(st: Estado, ini: Inicio): Inicio {
     if (!zonasF4.length) return continuar();
     const d = zonasF4[st.rng.peso(zonasF4.map((x) => x.peso))].zona;
     const rec = sortearReceptor(st, receptores(atk, portador, d, 1, contra), d, contra);
-    const m = marcacao(st, atk, def, d, 0, transicao);
-    const vDef = m.marcador ? valorJogador(m.marcador, GDD.acoes.passeCurto.def) : GDD.defensorAusente;
+    const { m, bonus } = marcarAlvo(atk, def, marcacao(st, atk, def, d, 0, transicao), rec, d, 0, transicao);
+    const vDef = m.marcador ? valorJogador(m.marcador, GDD.acoes.passeCurto.def) + bonus : GDD.defensorAusente;
     const pontos = pontosElo({ atk, def, acao: 'passeCurto', origem: z, destino: d, contra, elo: 0, transicao, temMarcador: m.marcador !== null });
     const chance = chanceDisputa(PROVISORIO.baseProgressaoResumida, valorAcao(portador, 'passeCurto'), vDef, Math.max(1, presenca[d]), m.n, pontos);
     e.passes += st.rng.int(GDD.passesResumida[0], GDD.passesResumida[1]);
@@ -683,18 +692,23 @@ function simularCadeia(st: Estado, ini: Inicio): Inicio {
     const x: Elo = { atk, def, portador, receptor: null, marcador: m.marcador, zona: d, origem: z, elo, transicao, contra };
     const eDePasse = acao === 'passeCurto' || acao === 'passeProfundidade' || acao === 'lancamento' || acao === 'cruzamento';
     if (eDePasse) x.receptor = sortearReceptor(st, receptores(atk, portador, d, acao === 'passeCurto' ? 0 : 1, contra), d, contra);
+    const mi = marcarAlvo(atk, def, m, eDePasse ? x.receptor : portador, d, elo, transicao);
+    m = mi.m;
+    x.marcador = m.marcador;
+    let bonus = mi.bonus;
 
     const dec = dividida(st, x, forcarCabeceio ? 'cabeceio' : tipoDoChute(d, true, ultimo));
     if (dec === 'evitada') {
       m = { marcador: null, n: 0 };
       x.marcador = null;
+      bonus = 0;
     } else if (dec) return encerrar(dec);
 
     if (acao === 'finalizacao') return encerrar(finalizar(st, x, forcarCabeceio ? 'cabeceio' : tipoDoChute(z, !m.marcador, ultimo), ultimo, contra));
 
     const def2 = GDD.acoes[acao].def;
     const penaDesarme = m.marcador?.amarelos && (acao === 'drible' || acao === 'conducao') ? GDD.cartoes.amareladoDesarme : 0;
-    const vDef = m.marcador ? valorJogador(m.marcador, def2, penaDesarme) : GDD.defensorAusente;
+    const vDef = m.marcador ? valorJogador(m.marcador, def2, penaDesarme) + bonus : GDD.defensorAusente;
     const pontos = pontosElo({ atk, def, acao, origem: z, destino: d, contra, elo, transicao, temMarcador: m.marcador !== null });
     const chance = chanceDisputa(GDD.acoes[acao].base, valorAcao(portador, acao, penaFirula(portador, acao, faixa(z))), vDef, Math.max(1, presenca[d]), m.n, pontos);
     if (!st.rng.pct(chance)) return encerrar(falha(st, acao, x));
@@ -907,6 +921,14 @@ function aplicarDoJogador(st: Estado, i: 0 | 1, intervalo: boolean, aj: AjustePa
     t.instrucoes = ins;
   }
   if (aj.batedores) t.batedores = { ...aj.batedores };
+  // Marcação individual (5b3): ajuste leve, sem custo. Só vale com os dois em campo e sem goleiro.
+  if (aj.marcacao === null && t.marcacao) { delete t.marcacao; feitos.push('marcação individual desfeita'); }
+  else if (aj.marcacao) {
+    const op = st.t[outro(i)];
+    const marcador = t.escalados.find((e) => e.j.id === aj.marcacao!.marcador && e !== t.goleiro);
+    const alvo = op.escalados.find((e) => e.j.id === aj.marcacao!.alvo && e !== op.goleiro);
+    if (marcador && alvo) { t.marcacao = { ...aj.marcacao }; feitos.push(`${marcador.j.nome} marca ${alvo.j.nome}`); }
+  }
   if (radical) for (const e of t.escalados) escolherAsDuas(e, t, st.tatica);
   else if (aj.instrucoes) for (const e of t.escalados) if (e.j.id in aj.instrucoes) escolherAsDuas(e, t, st.tatica);
   if (aj.instrucoes) for (const e of t.escalados) if (e.j.id in aj.instrucoes) feitos.push(`${e.j.nome}: ${e.instrCom?.nome ?? '-'} / ${e.instrSem?.nome ?? '-'}`);
@@ -960,7 +982,7 @@ function pausa(st: Estado, b: number): RelatorioPausa {
     times[o].ajustes = rp.pct(ctl.analista.aoVivo * 5) ? [...st.ultimaPausa[o], ...ajustes[o]] : [];
     const aj = ctl.pausa({
       minuto, intervalo, lado: i, placar: [st.placar[0], st.placar[1]], times, extras: extrasDoAnalista(st, i, b, ctl.analista, rp),
-      sugestoes: sug.map((s) => s.texto), lances: st.lances.filter((l) => l.bloco === b), time: st.t[i], trocasRestantes: GDD.substituicoes - st.t[i].trocas,
+      sugestoes: sug.map((s) => s.texto), lances: st.lances.filter((l) => l.bloco === b), time: st.t[i], rival: st.t[o], trocasRestantes: GDD.substituicoes - st.t[i].trocas,
     });
     if (aj) doJogador = { aj, sug };
   }
@@ -1037,8 +1059,8 @@ export function simularPartida(ent: EntradaPartida): ResultadoPartida {
     st.lesoesBloco = 0;
     st.acrescimo = 0;
     // GDD 1 e 5: aplica os ajustes e recalcula mapas, eixos e modificadores no início de cada bloco.
-    prepararTime(t[0], ent.tatica);
-    prepararTime(t[1], ent.tatica);
+    prepararTime(t[0], ent.tatica, t[1]);
+    prepararTime(t[1], ent.tatica, t[0]);
     t[0].confronto = calcularConfronto(t[0], t[1], ent.tatica.estilos);
     t[1].confronto = calcularConfronto(t[1], t[0], ent.tatica.estilos);
     atualizarMods(t[0], difPlacar(st, 0), b, st.impeto[0]);

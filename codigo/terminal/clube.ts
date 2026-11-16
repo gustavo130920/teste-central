@@ -4,7 +4,7 @@
 // --auto: Enter em tudo (teste rápido). --entradas: respostas na ordem, separadas por ";" (depois delas, Enter).
 import { readSync } from 'node:fs';
 import type { Jogador, PadraoTime } from '../motor/dados.ts';
-import type { AjustePausa, Lance, ResultadoPartida, TimeEmCampo, TipoBatedor, Tom } from '../motor/tipos.ts';
+import type { AjustePausa, Lance, MarcacaoIndividual, ResultadoPartida, TimeEmCampo, TipoBatedor, Tom } from '../motor/tipos.ts';
 import { PLANO_B } from '../motor/parametros.ts';
 import { custoRadical } from '../motor/pausas.ts';
 import { chaveTatica } from '../gestao/treino.ts';
@@ -151,6 +151,8 @@ const CARGAS: Carga[] = ['leve', 'normal', 'pesada'];
 const FOCOS: Foco[] = ['tatica', 'fisico', 'tecnico', 'bolaParada', 'adversario'];
 let ultimoTreino: { carga: Carga; foco: Foco } | null = null;
 let titulares: string[] | null = null;
+/** Marcação individual do próximo jogo (5b3): vale só para ele. */
+let marcacao: MarcacaoIndividual | null = null;
 const rodada: JogoDisputado[] = [];
 let ultimoDoClube: { d: JogoDisputado; r: ResultadoPartida } | null = null;
 let avisadoLivre = false;
@@ -247,6 +249,21 @@ function telaBatedores(mem: Memoria, elenco: Jogador[], poupados: string[]): voi
     definirBatedor(mem, clube.id, tipo, x === null ? null : onze[x].id);
   }
 }
+// ---------- Marcação individual (5b3) ----------
+const resumoMarcacao = (x: MarcacaoIndividual | null | undefined): string => (x ? `${nomeJogador(x.marcador)} marca ${nomeJogador(x.alvo)}` : 'nenhuma');
+/** Marcador (sem goleiro) e alvo (sem goleiro); Enter tira a marcação. */
+function escolherMarcacao(nossos: { j: Jogador; vaga: string }[], deles: { j: Jogador; vaga: string }[]): MarcacaoIndividual | null | undefined {
+  console.log('  Marcação individual: sem a bola, o marcador segue o alvo e ganha +2 nos duelos com ele; a zona dele fica descoberta (brecha). Até 1.');
+  const a = nossos.filter((x) => x.vaga !== 'GOL');
+  a.forEach((x, k) => console.log(`    ${String(k + 1).padStart(2)}) ${x.vaga.padEnd(5)} ${x.j.nome.padEnd(18)} Des ${x.j.atributos.Des ?? '-'} · Pos ${x.j.atributos.Pos ?? '-'} · Vel ${x.j.atributos.Vel ?? '-'}`));
+  const k = escolher('  Marcador (número; Enter = sem marcação):', a.length);
+  if (k === null) return null;
+  const b = deles.filter((x) => x.vaga !== 'GOL');
+  b.forEach((x, n) => console.log(`    ${String(n + 1).padStart(2)}) ${x.vaga.padEnd(5)} ${x.j.nome.padEnd(18)} nota ${x.j.nota}`));
+  const n = escolher('  Alvo (número; Enter volta):', b.length);
+  return n === null ? undefined : { marcador: a[k].j.id, alvo: b[n].j.id };
+}
+
 function telaTaticas(mem: Memoria, est: EstadoTaticaJogador): void {
   for (;;) {
     console.log(`  Táticas salvas (até ${TATICA_JOGADOR.max}; o foco Tática dá 100% à marcada para treino e 25% às outras):`);
@@ -518,11 +535,11 @@ const controle: ControleJogador = {
       const a = taticaAtiva(mem, clube.id);
       const nIns = Object.values(a.instrucoes).reduce((s, x) => s + (x.Com ? 1 : 0) + (x.Sem ? 1 : 0), 0);
       const bats = (Object.keys(BATEDORES) as TipoBatedor[]).filter((k) => a.batedores[k]).map((k) => `${BATEDORES[k]} ${nomeJogador(a.batedores[k]!)}`);
-      console.log(`--- 5. Próximo jogo: ${nome(p.jogo.adversario)} · ${a.nome}: ${t.estilo}, ${t.formacaoComBola} / ${t.formacaoSemBola} · entrosamento ${(progressoTatica(mem, clube.id) * 100).toFixed(0)}% · ajustes ${Object.entries(a.padrao).map(([k, v]) => `${k} ${v}`).join(', ') || 'nenhum'} · instruções suas ${nIns} · batedores ${bats.join(', ') || 'maior BP'} ---`);
+      console.log(`--- 5. Próximo jogo: ${nome(p.jogo.adversario)} · ${a.nome}: ${t.estilo}, ${t.formacaoComBola} / ${t.formacaoSemBola} · entrosamento ${(progressoTatica(mem, clube.id) * 100).toFixed(0)}% · ajustes ${Object.entries(a.padrao).map(([k, v]) => `${k} ${v}`).join(', ') || 'nenhum'} · instruções suas ${nIns} · batedores ${bats.join(', ') || 'maior BP'} · marcação ${resumoMarcacao(marcacao)} ---`);
       const fora = [...p.desfalques.lesionados.map((id) => `${m.elencos[clube.id].find((j) => j.id === id)?.nome} (lesão)`), ...p.desfalques.suspensos.map((id) => `${m.elencos[clube.id].find((j) => j.id === id)?.nome} (suspenso)`)];
       if (fora.length) console.log(`  Fora: ${fora.join(', ')}`);
       console.log(`  Titulares: ${titulares ? titulares.filter((id) => p.elenco.some((j) => j.id === id)).map((id) => p.elenco.find((j) => j.id === id)!.nome).join(', ') + ' (o auxiliar completa as vagas)' : 'o auxiliar escolhe os melhores (poupa quem está abaixo de 70)'}`);
-      const v = perguntar('  e) escolher titulares  a) auxiliar escolhe  t) estilo e formação  p) ajustes do padrão  i) instruções individuais  b) batedores  s) táticas salvas  d) delegação  Enter = jogar:');
+      const v = perguntar('  e) escolher titulares  a) auxiliar escolhe  t) estilo e formação  p) ajustes do padrão  i) instruções individuais  b) batedores  m) marcação individual  s) táticas salvas  d) delegação  Enter = jogar:');
       if (!v) break;
       if (v === 'e') {
         p.elenco.forEach((j: Jogador, i) => console.log(`    ${String(i + 1).padStart(2)}) ${j.posicao.padEnd(4)} ${j.nome.padEnd(18)} nota ${j.nota} · condição ${p.condicao[j.id] ?? 100} · moral ${estado(mem, j.id)?.moral.toFixed(0) ?? '-'}`));
@@ -542,11 +559,20 @@ const controle: ControleJogador = {
         }
       } else if (v === 'i') telaInstrucoes(mem, p.elenco, p.poupados);
       else if (v === 'b') telaBatedores(mem, p.elenco, p.poupados);
+      else if (v === 'm') {
+        const adv = mem.gestao.get(p.jogo.adversario)?.tecnico;
+        const deles = adv ? previaDoOnze(m.elencos[p.jogo.adversario], m.tatica, adv.formacaoComBola) : [];
+        console.log(`  Provável time do ${nome(p.jogo.adversario)} (sem saber lesões e suspensões; alvo fora de campo = sem marcação até ele entrar):`);
+        const x = escolherMarcacao(onzeDaTela(mem, p.elenco, p.poupados), deles);
+        if (x !== undefined) marcacao = x;
+      }
       else if (v === 's') telaTaticas(mem, est);
       else if (v === 'd') { menuDelegacao(); if (delegado.tatica) return null; }
     }
     console.log('--- 6. Jogar ---');
-    return { ...(titulares ? { titulares } : {}), ...planoDoJogo(mem, clube.id) };
+    const mi = marcacao;
+    marcacao = null;
+    return { ...(titulares ? { titulares } : {}), ...planoDoJogo(mem, clube.id), ...(mi ? { marcacao: mi } : {}) };
   },
   pausa(info, jogo, mem) {
     if (delegado.tatica) return null;
@@ -562,13 +588,13 @@ const controle: ControleJogador = {
     for (const x of info.extras) console.log(`  Analista: ${x}`);
     info.sugestoes.forEach((s, k) => console.log(`  Auxiliar ${k + 1}) ${s}`));
     const aj: AjustePausa = {};
-    const resumo = (): string => [aj.estilo ? `estilo ${aj.estilo}` : '', aj.formacaoComBola ? `formação ${aj.formacaoComBola} / ${aj.formacaoSemBola}` : '', aj.batedores ? 'batedores da tática' : '',
+    const resumo = (): string => [aj.estilo ? `estilo ${aj.estilo}` : '', aj.formacaoComBola ? `formação ${aj.formacaoComBola} / ${aj.formacaoSemBola}` : '', aj.batedores ? 'batedores da tática' : '', aj.marcacao !== undefined ? `marcação: ${resumoMarcacao(aj.marcacao)}` : '',
       ...Object.entries(aj.instrucoes ?? {}).map(([id, x]) => `${nomeJogador(id)}: ${[x.Com, x.Sem].map((v) => (v === undefined ? '' : v === null ? 'auxiliar' : m.tatica.instrucoes.find((ins) => ins.id === v)?.nome ?? v)).filter(Boolean).join(' / ')}`),
       ...Object.entries(aj.padrao ?? {}).map(([k, v]) => `${k} ${v}`),
       ...(aj.trocas ?? []).map(([s, e]) => `${nomeJogador(s)} por ${nomeJogador(e)}`), aj.fala ? `fala ${aj.fala}` : '', ...(aj.sugestoes ?? []).map((k) => `sugestão ${k + 1}`)].filter(Boolean).join(', ') || 'nada';
     for (;;) {
-      console.log(`  Estilo ${aj.estilo ?? t.estilo.nome} · ${aj.formacaoComBola ?? t.formacaoComBola} / ${aj.formacaoSemBola ?? t.formacaoSemBola} · ${PADRAO.map(([k]) => `${k} ${aj.padrao?.[k] ?? t.padrao[k]}`).join(' · ')} · trocas restantes ${info.trocasRestantes - (aj.trocas?.length ?? 0)} · a aplicar: ${resumo()}`);
-      const v = perguntar(`  s) sugestões  p) instruções do time  e) estilo  o) formação  i) instrução individual  b) Plano B  t) troca${info.intervalo ? '  f) fala' : ''}  a) auxiliar decide  Enter = seguir:`);
+      console.log(`  Estilo ${aj.estilo ?? t.estilo.nome} · ${aj.formacaoComBola ?? t.formacaoComBola} / ${aj.formacaoSemBola ?? t.formacaoSemBola} · ${PADRAO.map(([k]) => `${k} ${aj.padrao?.[k] ?? t.padrao[k]}`).join(' · ')} · marcação ${resumoMarcacao(t.marcacao)} · trocas restantes ${info.trocasRestantes - (aj.trocas?.length ?? 0)} · a aplicar: ${resumo()}`);
+      const v = perguntar(`  s) sugestões  p) instruções do time  e) estilo  o) formação  i) instrução individual  m) marcação individual  b) Plano B  t) troca${info.intervalo ? '  f) fala' : ''}  a) auxiliar decide  Enter = seguir:`);
       if (!v) return aj;
       if (v === 'a') return null;
       if (v === 's') {
@@ -593,6 +619,10 @@ const controle: ControleJogador = {
         if (com === t.formacaoComBola && sem === t.formacaoSemBola) { delete aj.formacaoComBola; delete aj.formacaoSemBola; } else Object.assign(aj, { formacaoComBola: com, formacaoSemBola: sem });
       } else if (v === 'i') {
         pausaInstrucao(t, aj);
+      } else if (v === 'm') {
+        const x = escolherMarcacao(t.escalados.map((e) => ({ j: e.j, vaga: e === t.goleiro ? 'GOL' : e.vaga })), info.rival.escalados.map((e) => ({ j: e.j, vaga: e === info.rival.goleiro ? 'GOL' : e.vaga })));
+        if (x !== undefined) aj.marcacao = x;
+        console.log('  Ajuste leve, sem perda.');
       } else if (v === 'b') {
         planoB(mem, t, aj);
       } else if (v === 't') {

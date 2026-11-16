@@ -6,7 +6,7 @@ import { calcularRetorno, eficaciaFinal, escolherInstrucao, exigenciaCumprida, i
 import type { Rng } from './rng.ts';
 import { calcularEfeitos } from './sinergias.ts';
 import type { EntradaTime, Escalado, TimeEmCampo } from './tipos.ts';
-import { TOTAL_ZONAS, corredor, distancia, faixa, zona as zonaDe, zonaDeCodigo } from './zonas.ts';
+import { TOTAL_ZONAS, corredor, distancia, espelhar, faixa, zona as zonaDe, zonaDeCodigo } from './zonas.ts';
 
 /** Nota do jogador na vaga: principal, secundária (LAT e PON valem para os dois lados), ou improvisado. */
 function notaNaVaga(j: Jogador, vaga: Posicao): number | null {
@@ -119,6 +119,7 @@ export function montarTime(indice: 0 | 1, ent: EntradaTime, tatica: Tatica, rng:
     apoio: { ...APOIO_NEUTRO, ...ent.apoio },
     ...(ent.instrucoes ? { instrucoes: ent.instrucoes } : {}),
     ...(ent.batedores ? { batedores: ent.batedores } : {}),
+    ...(ent.marcacao ? { marcacao: { ...ent.marcacao } } : {}),
   };
   for (const e of escalados) escolherAsDuas(e, t, tatica);
   prepararTime(t, tatica);
@@ -193,14 +194,26 @@ export function escolherAsDuas(e: Escalado, t: TimeEmCampo, tatica: Tatica): voi
   e.instrSem = escolherFase(e, 'Sem', t, tatica, z);
 }
 
-/** Refaz notas, mapas e efeitos a partir do plano atual. Roda no início de cada bloco (GDD 1 e 4). */
-export function prepararTime(t: TimeEmCampo, tatica: Tatica): void {
+/** Marcação individual em vigor (5b3): os dois em campo, nenhum é goleiro. */
+export function marcacaoAtiva(t: TimeEmCampo, op: TimeEmCampo | undefined): { marcador: Escalado; alvo: Escalado } | null {
+  if (!t.marcacao || !op) return null;
+  const marcador = t.escalados.find((e) => e.j.id === t.marcacao!.marcador);
+  const alvo = op.escalados.find((e) => e.j.id === t.marcacao!.alvo);
+  return marcador && alvo && marcador !== t.goleiro && alvo !== op.goleiro ? { marcador, alvo } : null;
+}
+
+/** Refaz notas, mapas e efeitos a partir do plano atual. Roda no início de cada bloco (GDD 1 e 4). `op` só para a marcação individual. */
+export function prepararTime(t: TimeEmCampo, tatica: Tatica, op?: TimeEmCampo): void {
   t.notas = notasEfetivas(t.estilo, t.padrao);
   const zagueiros = contarZagueiros(t);
+  // Sem `op` (saída no meio do bloco), vale a zona do alvo do início do bloco.
+  if (op) { const a = marcacaoAtiva(t, op); t.zonaDoAlvo = a ? espelhar(a.alvo.zonaCom) : undefined; }
+  const marcador = t.zonaDoAlvo === undefined ? undefined : t.escalados.find((e) => e.j.id === t.marcacao?.marcador && e !== t.goleiro);
   for (const e of t.escalados) {
     const goleiro = e === t.goleiro;
     const defensor = e.vaga === 'ZAG' || e.vaga.startsWith('LAT');
-    e.zonaSem = goleiro ? e.zonaSemBase : zonaDe(corredor(e.zonaSemBase), faixaPeloBloco(faixa(e.zonaSemBase), t.notas.Bloco, defensor));
+    // Marcador (5b3): sem a bola, fica na zona do alvo (a dele com a bola, espelhada) e larga a sua, que vira brecha.
+    e.zonaSem = marcador === e ? t.zonaDoAlvo! : goleiro ? e.zonaSemBase : zonaDe(corredor(e.zonaSemBase), faixaPeloBloco(faixa(e.zonaSemBase), t.notas.Bloco, defensor));
     e.retorno = calcularRetorno(distancia(e.zonaCom, e.zonaSem), t.notas.Risco);
     // Ajuste de linha na pausa pode invalidar uma instrução que exige Linha Alta.
     // A do jogador volta assim que a exigência é cumprida de novo (5b1).
@@ -213,7 +226,8 @@ export function prepararTime(t: TimeEmCampo, tatica: Tatica): void {
     if (e.instrSem && !exigenciaCumprida(e.instrSem, t.padrao, zagueiros)) e.instrSem = escolherFase(e, 'Sem', t, tatica, zagueiros);
     const fator = t.apoio.entrosamento * (t.ajusteFraco ? RESPALDO.fator : 1) * t.custoAjuste;
     e.efCom = e.instrCom ? eficaciaFinal(e, e.instrCom, t.estilo.nome, fator) : 0;
-    e.efSem = e.instrSem ? eficaciaFinal(e, e.instrSem, t.estilo.nome, fator) : 0;
+    // O marcador deixa a instrução sem a bola de lado: ela volta quando a marcação acaba.
+    e.efSem = e.instrSem && marcador !== e ? eficaciaFinal(e, e.instrSem, t.estilo.nome, fator) : 0;
     montarPesos(e, goleiro);
   }
   const somaPesos = (peso: (e: Escalado) => number[]): number[] => {
