@@ -4,6 +4,7 @@ import { Spinner } from '@/componentes/spinner';
 import { pedir } from '@/nucleo/cliente';
 import type { Carga, ElencoTela, Foco, LinhaElenco, TreinoTela } from '@/nucleo/protocolo';
 import { Base, Comercial } from '@/telas/BaseComercial';
+import { Mercado } from '@/telas/Mercado';
 import { cn } from '@/lib/utils';
 
 const CARGAS: { id: Carga; nome: string; dica: string }[] = [
@@ -140,7 +141,7 @@ function Treino({ t, aoMudar, ocupado }: { t: TreinoTela; aoMudar: (p: { carga: 
 }
 
 export function Gestao({ dia, aoVoltar }: { dia: number; aoVoltar: () => void }) {
-  const [aba, setAba] = useState<'elenco' | 'treino' | 'base' | 'comercial'>('elenco');
+  const [aba, setAba] = useState<'elenco' | 'treino' | 'base' | 'comercial' | 'mercado'>('elenco');
   const [elenco, setElenco] = useState<ElencoTela | null>(null);
   const [treino, setTreino] = useState<TreinoTela | null>(null);
   const [ocupado, setOcupado] = useState(false);
@@ -164,14 +165,14 @@ export function Gestao({ dia, aoVoltar }: { dia: number; aoVoltar: () => void })
         <Button variant="ghost" onClick={aoVoltar}>Voltar ao painel</Button>
       </header>
       <div role="tablist" aria-label="Áreas" className="mt-4 flex gap-2">
-        {(['elenco', 'treino', 'base', 'comercial'] as const).map((a) => (
+        {(['elenco', 'treino', 'mercado', 'base', 'comercial'] as const).map((a) => (
           <button key={a} role="tab" type="button" aria-selected={aba === a} onClick={() => setAba(a)}
-            className={cn('rounded-md border px-4 py-1.5 text-sm', aba === a ? 'border-led bg-led/15 font-semibold text-led' : 'border-linha hover:bg-faixa')}>{{ elenco: 'Elenco', treino: 'Treino', base: 'Base', comercial: 'Comercial' }[a]}</button>
+            className={cn('rounded-md border px-4 py-1.5 text-sm', aba === a ? 'border-led bg-led/15 font-semibold text-led' : 'border-linha hover:bg-faixa')}>{{ elenco: 'Elenco', treino: 'Treino', mercado: 'Mercado', base: 'Base', comercial: 'Comercial' }[a]}</button>
         ))}
       </div>
       {erro && <p role="alert" className="mt-3 text-cartao">{erro}</p>}
       <div className="mt-4" role="tabpanel">
-        {aba === 'base' ? <Base /> : aba === 'comercial' ? <Comercial />
+        {aba === 'mercado' ? <Mercado /> : aba === 'base' ? <Base /> : aba === 'comercial' ? <Comercial />
           : !elenco || !treino ? <p className="flex items-center gap-2 text-musgo"><Spinner /> Carregando…</p>
           : aba === 'elenco' ? <Elenco e={elenco} dia={dia} /> : <Treino t={treino} aoMudar={mudar} ocupado={ocupado} />}
       </div>

@@ -178,6 +178,60 @@ export type PedidoComercial =
 export interface ResultadoBase { erro: string | null; tela: BaseTela }
 export interface ResultadoComercial { erro: string | null; tela: ComercialTela }
 
+// ---------- Mercado (5d3b2) ----------
+
+export type PapelTela = 'titular' | 'rotacao' | 'reserva';
+export interface VistoTela { id: string; nome: string; posicao: string; idade: number; clube: string | null; nota: string; pot: string; valor: number; relatorios: number; observado: boolean; meu: boolean }
+export interface NegTela {
+  id: number;
+  tipo: 'compra' | 'renovacao';
+  /** Texto: Compra (clube), Livre, Pré-contrato ou Renovação. */
+  rotulo: string;
+  jogador: string;
+  jogadorId: string;
+  fase: 'clube' | 'jogador';
+  rodada: number;
+  estado: 'aberta' | 'enviada';
+  /** Pedido do outro lado depois da 1ª recusa (R$ mi na fase do clube; R$ mil/mês na do jogador). */
+  contra: number | null;
+  oferta: number;
+  salario: number;
+  papel: PapelTela;
+  anos: number;
+  /** Luvas em % do salário anual. */
+  luvas: number;
+  chance: number;
+}
+export interface TermosTela { oferta?: number; salario?: number; papel?: PapelTela; anos?: number; luvas?: number }
+export interface PropostaTela { id: number; comprador: string; jogador: string; oferta: number; valor: number; maior: boolean; reacao: string; estado: string }
+export interface MeuJogadorMercado { id: string; nome: string; posicao: string; idade: number; nota: number; contrato: number | null; salario: number; valor: number; transferivel: boolean; querSair: boolean; vencendo: boolean }
+export interface MercadoTela {
+  manual: boolean;
+  janela: string;
+  podeComprar: boolean;
+  orcamento: number;
+  folha: number;
+  teto: number;
+  elenco: number;
+  caixa: number | null;
+  avisos: string[];
+  propostas: PropostaTela[];
+  negociacoes: NegTela[];
+  observados: VistoTela[];
+  meus: MeuJogadorMercado[];
+  grupos: string[];
+}
+export interface FiltroTela { grupo?: string; idadeMax?: number; notaMin?: number; valorMax?: number }
+export type PedidoMercado =
+  | { acao: 'modo'; manual: boolean }
+  | { acao: 'comprar'; id: string; pre: boolean }
+  | { acao: 'renovar'; id: string }
+  | { acao: 'observar'; id: string }
+  | { acao: 'transferivel'; id: string }
+  | { acao: 'proposta'; id: number; resposta: 'aceitar' | 'recusar' | number }
+  | { acao: 'enviar'; neg: number; termos: TermosTela };
+export interface ResultadoMercado { erro: string | null; msg: string | null; tela: MercadoTela }
+
 export interface NovoJogo { clube: string; nome: string; origem: Origem; semente: number }
 
 // ---------- Partida ao vivo (5d2) ----------
@@ -305,6 +359,11 @@ export interface Pedidos {
   agirBase: { pede: PedidoBase; volta: ResultadoBase };
   comercial: { pede: void; volta: ComercialTela };
   agirComercial: { pede: PedidoComercial; volta: ResultadoComercial };
+  mercado: { pede: void; volta: MercadoTela };
+  agirMercado: { pede: PedidoMercado; volta: ResultadoMercado };
+  buscarMercado: { pede: FiltroTela; volta: VistoTela[] };
+  relatorioMercado: { pede: string; volta: string[] };
+  chanceMercado: { pede: { neg: number; termos: TermosTela }; volta: { chance: number; luvasMi: number } };
   definirTreino: { pede: { carga: Carga; foco: Foco } | null; volta: TreinoTela };
   slots: { pede: void; volta: InfoSlot[] };
   salvar: { pede: Slot; volta: InfoSlot };
