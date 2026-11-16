@@ -1,10 +1,11 @@
 // Uso: npm run clube -- [SEMENTE] [--auto] [--entradas "1;Fulano;2;;;"] [--anos N]
 // Carreira com o clube do jogador (etapa 4, 8ª fatia, partes 8a, 8b1, 8b2 e 8b3; etapa 5, 5a1 base, 5a2 comercial, 5b1 tática; GDD-gestao 1 e 8, GDD-motor 7). Leitura de teclado síncrona.
 // Enter em qualquer pergunta = "Avançar" (mantém o que está, ou deixa com a delegação).
-// --auto: Enter em tudo (teste rápido). --entradas: respostas na ordem, separadas por ";" (depois delas, Enter).
-import { readSync } from 'node:fs';
+// --auto: Enter em tudo (teste rápido). --carregar arquivo: retoma um save. --salvar: salva em toda virada. --entradas: respostas na ordem, separadas por ";" (depois delas, Enter).
+import { mkdirSync, readFileSync, readSync, writeFileSync } from 'node:fs';
 import type { Jogador, PadraoTime } from '../motor/dados.ts';
 import type { AjustePausa, Lance, MarcacaoIndividual, ResultadoPartida, TimeEmCampo, TipoBatedor, Tom } from '../motor/tipos.ts';
+import type { Clube, Tecnico } from '../motor/dados.ts';
 import { PLANO_B } from '../motor/parametros.ts';
 import { custoRadical } from '../motor/pausas.ts';
 import { chaveTatica } from '../gestao/treino.ts';
@@ -32,6 +33,7 @@ import type { InfoComercial } from '../temporada/comercialJogador.ts';
 import { COMERCIAL_JOGADOR, amortizarDivida, chanceDesistir, estrutura, iniciarObra, limiteEmprestimo, mudarPrecos, tomarEmprestimo } from '../temporada/comercialJogador.ts';
 import { custoObra } from '../gestao/financas.ts';
 import { carregarBase } from './carregar.ts';
+import { carregar, salvar } from '../temporada/salvamento.ts';
 
 // ---------- Entrada ----------
 const args = process.argv.slice(2);
@@ -39,8 +41,11 @@ let auto = args.includes('--auto');
 const fila: string[] = [];
 let anosMax = Infinity;
 let semente = 2026;
+let arquivoSave: string | null = null;
+const salvarSempre = args.includes('--salvar'); // teste: salva em toda virada, sem perguntar
 for (let i = 0; i < args.length; i++) {
-  if (args[i] === '--entradas') fila.push(...(args[++i] ?? '').split(';'));
+  if (args[i] === '--carregar') arquivoSave = args[++i] ?? null;
+  else if (args[i] === '--entradas') fila.push(...(args[++i] ?? '').split(';'));
   else if (args[i] === '--anos') anosMax = Number(args[++i]);
   else if (/^\d+$/.test(args[i])) semente = Number(args[i]);
 }
@@ -81,37 +86,50 @@ function escolher(p: string, n: number): number | null {
 }
 
 // ---------- Mundo e início de carreira ----------
+/** O que o save do terminal guarda além do mundo (5c). */
+interface ExtraClube { clubeTela: string; clubeJogador: string; semente: number; delegado: Record<Area, boolean>; limites: typeof limites }
 const base = carregarBase();
-const m = criarMundo(base);
+const save = arquivoSave ? carregar<ExtraClube>(readFileSync(arquivoSave, 'utf8')) : null;
+if (save) semente = save.extra.semente;
+const m = save?.mundo ?? criarMundo(base);
 const nome = (id: string): string => m.clubes.find((c) => c.id === id)?.nomeCurto ?? id;
 const COMP: Record<string, string> = { 'serie-a': 'Série A', 'serie-b': 'Série B', 'copa-do-brasil': 'Copa do Brasil', libertadores: 'Libertadores', mundial: 'Mundial', champions: 'Champions' };
 const perfil = new Map(base.comercial.fichas.map((f) => [f.clubeId, f.perfil]));
 const brasileiros = m.clubes.filter((c) => (c.liga === 'serie-a' || c.liga === 'serie-b') && !c.reserva);
 
-console.log('\n=== Nova carreira (8ª fatia, parte 8a) ===');
-brasileiros.forEach((c, i) => console.log(`  ${String(i + 1).padStart(2)}) ${c.nomeCurto.padEnd(16)} ${c.liga === 'serie-a' ? 'Série A' : 'Série B'} · Reputação ${c.reputacao} · ${perfil.get(c.id) ?? '-'}`));
-let clube = brasileiros[escolher('Clube (número; Enter = 1):', brasileiros.length) ?? 0];
-const antigo = m.tecnicos.find((t) => t.clubeId === clube.id)!;
-const nomeTec = perguntar('Nome do técnico (Enter = Técnico Novato):') || 'Técnico Novato';
-const ORIGENS: Origem[] = ['Ex-jogador', 'Estudioso', 'Formador da base'];
-ORIGENS.forEach((o, i) => {
-  const x = TECNICO_JOGADOR.origens[o];
-  console.log(`  ${i + 1}) ${o}: Reputação ${TECNICO_JOGADOR.reputacao + x.reputacao}, ${Object.entries(x.trabalho).map(([k, v]) => `${k} +${v}`).join(', ')}`);
-});
-const origem = ORIGENS[escolher('Origem (Enter = Ex-jogador):', 3) ?? 0];
+let clube: Clube;
+let tecnico: Tecnico;
 const estilos = m.tatica.estilos.map((s) => s.nome);
 const formacoes = m.tatica.formacoes.map((f) => f.nome);
 const lista = (xs: string[]): string => xs.map((x, i) => `${i + 1}) ${x}`).join('  ');
-console.log(`  Estilos: ${lista(estilos)}`);
-const estilo = estilos[escolher(`Estilo (Enter = ${antigo.estilo}, o do técnico anterior):`, estilos.length) ?? estilos.indexOf(antigo.estilo)];
-console.log(`  Formações: ${lista(formacoes)}`);
-const com = formacoes[escolher(`Formação com a bola (Enter = ${antigo.formacaoComBola}):`, formacoes.length) ?? formacoes.indexOf(antigo.formacaoComBola)];
-const sem = formacoes[escolher(`Formação sem a bola (Enter = ${antigo.formacaoSemBola}):`, formacoes.length) ?? formacoes.indexOf(antigo.formacaoSemBola)];
-const TEMP: FichaTecnico['temperamento'][] = ['Paizão', 'Linha-dura', 'Gestor'];
-const temperamento = TEMP[escolher(`Temperamento: ${lista(TEMP)} (Enter = Gestor):`, 3) ?? 2];
-const tecnico = criarTecnicoDoJogador({ nome: nomeTec, origem, estilo, formacaoComBola: com, formacaoSemBola: sem, temperamento });
-assumirClube(m.tecnicos, clube, tecnico);
-console.log(`\n${tecnico.nome} assume o ${clube.nome} (Reputação ${tecnico.reputacao}). ${antigo.nome} fica livre.`);
+if (save) {
+  tecnico = m.tecnicos.find((t) => t.humano)!;
+  clube = m.clubes.find((c) => c.id === save.extra.clubeTela)!;
+  console.log(`
+=== Carreira carregada: ano ${m.ano}, ${tecnico.nome} (${tecnico.clubeId ? `técnico do ${nome(tecnico.clubeId)}` : 'sem clube'}, Reputação ${tecnico.reputacao}) ===`);
+} else {
+  console.log('\n=== Nova carreira (8ª fatia, parte 8a) ===');
+  brasileiros.forEach((c, i) => console.log(`  ${String(i + 1).padStart(2)}) ${c.nomeCurto.padEnd(16)} ${c.liga === 'serie-a' ? 'Série A' : 'Série B'} · Reputação ${c.reputacao} · ${perfil.get(c.id) ?? '-'}`));
+  clube = brasileiros[escolher('Clube (número; Enter = 1):', brasileiros.length) ?? 0];
+  const antigo = m.tecnicos.find((t) => t.clubeId === clube.id)!;
+  const nomeTec = perguntar('Nome do técnico (Enter = Técnico Novato):') || 'Técnico Novato';
+  const ORIGENS: Origem[] = ['Ex-jogador', 'Estudioso', 'Formador da base'];
+  ORIGENS.forEach((o, i) => {
+    const x = TECNICO_JOGADOR.origens[o];
+    console.log(`  ${i + 1}) ${o}: Reputação ${TECNICO_JOGADOR.reputacao + x.reputacao}, ${Object.entries(x.trabalho).map(([k, v]) => `${k} +${v}`).join(', ')}`);
+  });
+  const origem = ORIGENS[escolher('Origem (Enter = Ex-jogador):', 3) ?? 0];
+  console.log(`  Estilos: ${lista(estilos)}`);
+  const estilo = estilos[escolher(`Estilo (Enter = ${antigo.estilo}, o do técnico anterior):`, estilos.length) ?? estilos.indexOf(antigo.estilo)];
+  console.log(`  Formações: ${lista(formacoes)}`);
+  const com = formacoes[escolher(`Formação com a bola (Enter = ${antigo.formacaoComBola}):`, formacoes.length) ?? formacoes.indexOf(antigo.formacaoComBola)];
+  const sem = formacoes[escolher(`Formação sem a bola (Enter = ${antigo.formacaoSemBola}):`, formacoes.length) ?? formacoes.indexOf(antigo.formacaoSemBola)];
+  const TEMP: FichaTecnico['temperamento'][] = ['Paizão', 'Linha-dura', 'Gestor'];
+  const temperamento = TEMP[escolher(`Temperamento: ${lista(TEMP)} (Enter = Gestor):`, 3) ?? 2];
+  tecnico = criarTecnicoDoJogador({ nome: nomeTec, origem, estilo, formacaoComBola: com, formacaoSemBola: sem, temperamento });
+  assumirClube(m.tecnicos, clube, tecnico);
+  console.log(`\n${tecnico.nome} assume o ${clube.nome} (Reputação ${tecnico.reputacao}). ${antigo.nome} fica livre.`);
+}
 
 // Delegação (GDD-gestao 8). Comercial começa com o gerente (5a2); a base, com o coordenador (5a1).
 const delegado: Record<Area, boolean> = { tatica: false, treino: false, imprensa: false, mercado: false, comercial: true, base: true };
@@ -138,7 +156,7 @@ function menuDelegacao(): void {
     }
   }
 }
-menuDelegacao();
+if (save) { Object.assign(delegado, save.extra.delegado); Object.assign(limites, save.extra.limites); } else menuDelegacao();
 
 // ---------- Telas do ciclo ----------
 let logLido = 0;
@@ -155,7 +173,7 @@ let titulares: string[] | null = null;
 let marcacao: MarcacaoIndividual | null = null;
 const rodada: JogoDisputado[] = [];
 let ultimoDoClube: { d: JogoDisputado; r: ResultadoPartida } | null = null;
-let avisadoLivre = false;
+let avisadoLivre = save !== null && tecnico.clubeId === null;
 
 const PADRAO: [keyof PadraoTime, string[]][] = [
   ['linha', ['Alta', 'Média', 'Baixa']], ['pressao', ['Alta', 'Média', 'Baixa']], ['largura', ['Aberta', 'Normal', 'Estreita']],
@@ -490,7 +508,7 @@ function telaMercado(info: InfoMercado, mem: Memoria): void {
 }
 
 const controle: ControleJogador = {
-  clube: clube.id,
+  clube: save?.extra.clubeJogador ?? clube.id,
   aoJogo(d, r) { ultimoDoClube = { d, r }; },
   aoCiclo(jogo, mem) {
     telaResultado();
@@ -724,5 +742,12 @@ for (let ano = 1; ano <= anosMax; ano++) {
     const h = t.memoria.carreira?.historico.filter((x) => x.fato !== 'proposta recusada').pop();
     console.log(`\n${tecnico.nome} está sem clube (saiu do ${nome(h?.clube ?? clube.id)}: ${h?.fato ?? 'saída'}). Reputação ${tecnico.reputacao}. Propostas a cada 4 semanas; sem nenhuma em 26, o último da Série B oferece.`);
   }
-  if (perguntar('\nEnter = próxima temporada; s = sair:') === 's') break;
+  const v = salvarSempre ? 'g' : perguntar('\nEnter = próxima temporada; g = salvar e seguir; gs = salvar e sair; s = sair:');
+  if (v === 'g' || v === 'gs') {
+    mkdirSync('saves', { recursive: true });
+    const arq = `saves/${clube.id}-ano${m.ano}.json`;
+    writeFileSync(arq, salvar<ExtraClube>(m, { clubeTela: clube.id, clubeJogador: controle.clube, semente, delegado, limites }));
+    console.log(`  Salvo em ${arq} (carregar: npm run clube -- --carregar ${arq}).`);
+  }
+  if (v === 's' || v === 'gs') break;
 }
