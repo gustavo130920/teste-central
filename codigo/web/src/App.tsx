@@ -8,9 +8,10 @@ import { Fim } from '@/telas/Fim';
 import { Inicio } from '@/telas/Inicio';
 import { EscolhaClube } from '@/telas/EscolhaClube';
 import { Painel } from '@/telas/Painel';
+import { Gestao } from '@/telas/Gestao';
 
 /** Pilha de telas: Esc volta uma tela (menos no painel, onde volta só pelo botão Início). */
-type Tela = 'inicio' | 'escolha' | 'painel' | 'prejogo' | 'partida' | 'fim';
+type Tela = 'inicio' | 'escolha' | 'painel' | 'prejogo' | 'partida' | 'fim' | 'gestao';
 
 export default function App() {
   const [pilha, setPilha] = useState<Tela[]>(['inicio']);
@@ -75,8 +76,9 @@ export default function App() {
       )}
       {tela === 'painel' && painel && (
         <Painel painel={painel} ocupado={ocupado} erro={erro} aoSair={() => setPilha(['inicio'])}
-          aoAvancar={() => etapa(() => pedir('avancar'))} />
+          aoAvancar={() => etapa(() => pedir('avancar'))} aoGestao={() => ir('gestao')} />
       )}
+      {tela === 'gestao' && painel && <Gestao dia={painel.dia} aoVoltar={voltar} />}
       {tela === 'prejogo' && pre && (
         <PreJogo pre={pre} ocupado={ocupado} erro={erro} aoJogar={(e) => etapa(() => pedir('preJogo', e), e.modo === 'simular')} />
       )}

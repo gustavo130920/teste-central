@@ -8,10 +8,11 @@ import { cicloEmPassos, copasDe, tabelaAtual } from '../../../temporada/temporad
 import type { DiaEmPassos, JogoDisputado, RespostaDoDia } from '../../../temporada/temporada.ts';
 import type { AoVivo, Contexto } from './partida.ts';
 import { ajusteDaResposta, aplicarPreJogo, fimJogo, infoJogoTela, novasLinhas, novoAoVivo, parcial, preJogo, telaPausa } from './partida.ts';
+import { estadoTatica, progressoDe } from '../../../temporada/taticaJogador.ts';
 import { assumirClube, criarTecnicoDoJogador } from '../../../temporada/jogador.ts';
 import { carregar, salvar } from '../../../temporada/salvamento.ts';
 import { comprimir, descomprimir, apagar, gravar, ler, listar } from './saves.ts';
-import type { ClubeResumo, Etapa, EscolhaPreJogo, RespostaPausa, InfoSlot, JogoTela, NovoJogo, Painel, Pedido, Pedidos, Resposta, ResumoVirada, Slot, TipoPedido } from './protocolo.ts';
+import type { Carga, Foco, ElencoTela, TreinoTela, ClubeResumo, Etapa, EscolhaPreJogo, RespostaPausa, InfoSlot, JogoTela, NovoJogo, Painel, Pedido, Pedidos, Resposta, ResumoVirada, Slot, TipoPedido } from './protocolo.ts';
 
 const arquivos = import.meta.glob('../../../gerado/*.json', { eager: true, import: 'default' }) as Record<string, unknown>;
 /** Base nova a cada jogo: a carreira muda elencos e fichas (o mundo não copia tudo). */
@@ -23,7 +24,7 @@ const novaBase = () => montarBase(<T,>(arq: string): T => {
 const base = novaBase();
 
 /** O que o save da web guarda além do mundo. */
-interface ExtraWeb { semente: number; clubeTela: string }
+interface ExtraWeb { semente: number; clubeTela: string; treino?: { carga: Carga; foco: Foco } | null }
 
 let m: Mundo | null = null;
 let extra: ExtraWeb = { semente: 0, clubeTela: '' };
@@ -92,6 +93,8 @@ function avancar(): Promise<Etapa> {
   const J = w.jogador!;
   // O controle do jogador não vai no save (5c): o gancho do fim do jogo é posto aqui a cada ciclo.
   J.aoJogo = (d, r) => { if (ciclo?.aoVivo) ciclo.aoVivo.final = { d, r }; };
+  // Treino (5d3a): plano fixo do jogador, ou o auxiliar decide (null).
+  J.treino = () => extra.treino ?? null;
   ciclo = { it: cicloEmPassos(s, { jogador: J, interativo: true }), aoVivo: null };
   return conduzir(undefined);
 }
@@ -199,6 +202,44 @@ function painel(w: Mundo): Painel {
   };
 }
 
+// ---------- Elenco e treino (5d3a) ----------
+function elencoTela(w: Mundo): ElencoTela {
+  const mem = w.emAndamento!.memoria;
+  const id = extra.clubeTela;
+  const dia = w.emAndamento!.dia;
+  const jogadores = (mem.elencos[id] ?? []).map((j) => {
+    const e = mem.jogadores.get(j.id);
+    const lesionado = !!e && e.voltaDia !== null && e.voltaDia > dia;
+    const suspenso = !!e && Object.values(e.suspensao).some((n) => n > 0);
+    return {
+      id: j.id, nome: j.nome, posicao: j.posicao, idade: j.idade, nota: j.nota, potencial: j.potencial,
+      condicao: Math.round(e?.condicao ?? 100), moral: Math.round(e?.moral ?? 50),
+      estado: lesionado ? 'lesionado' as const : suspenso ? 'suspenso' as const : 'ok' as const,
+      voltaDia: lesionado ? e!.voltaDia : null, contrato: j.contrato, salario: j.salario, valor: j.valor,
+      tracos: j.tracos, qualidades: j.qualidades, defeitos: j.defeitos, titularidades: e?.titularidades ?? 0,
+    };
+  }).sort((a, b) => b.nota - a.nota || a.nome.localeCompare(b.nome));
+  return { clube: id, folhaMes: jogadores.reduce((s, j) => s + j.salario, 0), jogadores };
+}
+
+function treinoTela(w: Mundo): TreinoTela {
+  const mem = w.emAndamento!.memoria;
+  const id = extra.clubeTela;
+  const g = mem.gestao.get(id);
+  const est = estadoTatica(mem, id);
+  return {
+    plano: extra.treino ?? null,
+    ultimo: { carga: g?.treino.carga ?? 'normal', foco: g?.treino.foco ?? null },
+    taticas: est.taticas.map((x, i) => ({ nome: x.nome, estilo: x.estilo, formacao: `${x.formacaoComBola} / ${x.formacaoSemBola}`, entrosamento: progressoDe(mem, id, w.tatica, x), ativa: i === est.ativa, treinar: i === est.treinar })),
+  };
+}
+
+function definirTreino(p: { carga: Carga; foco: Foco } | null): TreinoTela {
+  const w = exigir();
+  extra.treino = p;
+  return treinoTela(w);
+}
+
 // ---------- Saves ----------
 function infoDe(w: Mundo, slot: Slot, tamanho: number, criado = new Date().toISOString()): InfoSlot {
   const t = tecnicoDoJogador(w);
@@ -264,6 +305,9 @@ const tratar: Tratador = {
   preJogo: (e) => responderPreJogo(e),
   pausa: (r) => responderPausa(r),
   painel: () => (m ? painel(m) : null),
+  elenco: () => elencoTela(exigir()),
+  treino: () => treinoTela(exigir()),
+  definirTreino: (p) => definirTreino(p),
   slots: () => listar(),
   salvar: (slot) => salvarEm(slot),
   carregar: (slot) => carregarSlot(slot),

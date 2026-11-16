@@ -86,6 +86,48 @@ export interface InfoSlot {
   tamanho: number;
 }
 
+export type Carga = 'leve' | 'normal' | 'pesada';
+export type Foco = 'tatica' | 'fisico' | 'tecnico' | 'bolaParada' | 'adversario';
+
+// ---------- Telas de gestão (5d3a): elenco e treino ----------
+
+export interface LinhaElenco {
+  id: string;
+  nome: string;
+  posicao: string;
+  idade: number;
+  nota: number;
+  potencial: number;
+  /** 0 a 100. */
+  condicao: number;
+  moral: number;
+  estado: 'ok' | 'lesionado' | 'suspenso';
+  /** Dia em que volta da lesão. */
+  voltaDia: number | null;
+  /** Até quando vai o contrato (ano). */
+  contrato: number | null;
+  /** R$ mil por mês. */
+  salario: number;
+  /** R$ mi. */
+  valor: number;
+  tracos: string[];
+  qualidades: string[];
+  defeitos: string[];
+  titularidades: number;
+}
+
+export interface TaticaTreino { nome: string; estilo: string; formacao: string; entrosamento: number; ativa: boolean; treinar: boolean }
+
+export interface ElencoTela { clube: string; folhaMes: number; jogadores: LinhaElenco[] }
+
+export interface TreinoTela {
+  /** Plano fixo do jogador; null deixa com o auxiliar a cada ciclo. */
+  plano: { carga: Carga; foco: Foco } | null;
+  /** Último treino aplicado (do jogador ou do auxiliar). */
+  ultimo: { carga: Carga; foco: Foco | null };
+  taticas: TaticaTreino[];
+}
+
 export interface NovoJogo { clube: string; nome: string; origem: Origem; semente: number }
 
 // ---------- Partida ao vivo (5d2) ----------
@@ -207,6 +249,9 @@ export interface Pedidos {
   preJogo: { pede: EscolhaPreJogo; volta: Etapa };
   pausa: { pede: RespostaPausa; volta: Etapa };
   painel: { pede: void; volta: Painel | null };
+  elenco: { pede: void; volta: ElencoTela };
+  treino: { pede: void; volta: TreinoTela };
+  definirTreino: { pede: { carga: Carga; foco: Foco } | null; volta: TreinoTela };
   slots: { pede: void; volta: InfoSlot[] };
   salvar: { pede: Slot; volta: InfoSlot };
   carregar: { pede: Slot; volta: Painel };

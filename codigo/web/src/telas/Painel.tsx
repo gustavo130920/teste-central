@@ -156,10 +156,11 @@ function Virada({ p }: { p: P }) {
   );
 }
 
-export function Painel({ painel: p, aoAvancar, ocupado, aoSair, erro }: { painel: P; aoAvancar: () => void; ocupado: boolean; aoSair: () => void; erro: string | null }) {
+export function Painel({ painel: p, aoAvancar, aoGestao, ocupado, aoSair, erro }: { painel: P; aoAvancar: () => void; aoGestao: () => void; ocupado: boolean; aoSair: () => void; erro: string | null }) {
   const [salvando, setSalvando] = useState(false);
   const botao = useRef<HTMLButtonElement>(null);
   useHotkeys('a', () => { if (!ocupado && !salvando) aoAvancar(); }, [ocupado, salvando, aoAvancar]);
+  useHotkeys('e', () => { if (!ocupado && p.tecnico.clube) aoGestao(); }, [ocupado, aoGestao, p.tecnico.clube]);
   useHotkeys('s', () => setSalvando(true), []);
   useEffect(() => { if (!ocupado) botao.current?.focus(); }, [ocupado]);
   const indicador = (rotulo: string, valor: string, dica: string) => (
@@ -177,6 +178,7 @@ export function Painel({ painel: p, aoAvancar, ocupado, aoSair, erro }: { painel
         </div>
         <div className="flex items-center gap-2">
           <p className="mr-2 text-right leading-tight"><span className="block text-xs text-musgo">Ano {p.ano}</span><span className="text-lg font-semibold">Semana {Math.min(p.semana, 52)}</span></p>
+          <Button variant="secondary" disabled={!p.tecnico.clube} onClick={aoGestao}>Elenco e treino <Kbd keys={['E']} className="ml-1" /></Button>
           <Button variant="secondary" onClick={() => setSalvando(true)}>Salvar <Kbd keys={['S']} className="ml-1" /></Button>
           <Button variant="ghost" onClick={aoSair}>Início</Button>
         </div>
