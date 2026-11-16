@@ -305,10 +305,12 @@ function assumir(mem: Memoria, ctx: CtxDiretoria, clube: string, st: EstadoDiret
 
 // ---------- 8b3: carreira do técnico do jogador (GDD-gestao 9) ----------
 
-/** PROVISORIO (8b3): propostas ao técnico do jogador. */
+/** Propostas ao técnico do jogador (8b3, aprovadas em 15/11/2026). */
 export const PROPOSTAS_TECNICO = {
   /** Clube com vaga oferece se a Reputação dele for até esta folga acima da do técnico. */
   folga: 3,
+  /** Aprovado (8b3): livre com Reputação abaixo do piso conta como o piso na comparação com o clube. */
+  pisoLivre: 12,
   /** A vaga fica aberta ao técnico do jogador por 4 semanas depois da saída. */
   vagaDias: 28,
   /** Livre: propostas a cada 4 semanas; sem proposta em 26 semanas, o último da Série B oferece. */
@@ -390,7 +392,7 @@ export function contratarJogador(mem: Memoria, ctx: CtxDiretoria, clube: string,
 /**
  * Propostas ao técnico do jogador (só com o gancho `proposta`). Empregado: na janela e na virada (dia 1), de clubes com vaga,
  * Reputação até a folga acima da dele e não menor que a do clube atual. Livre: a cada 4 semanas (e no dia 1), vagas pela
- * Reputação; sem proposta em 26 semanas, o último da Série B. Resposta null = aceita se livre, recusa se empregado.
+ * Reputação (com o piso de 12); sem proposta em 26 semanas, o último da Série B. Resposta null = aceita se livre, recusa se empregado.
  */
 export function cicloDoTecnico(mem: Memoria, ctx: CtxDiretoria, ultimoB: () => string[]): void {
   const J = ctx.jogador;
@@ -408,6 +410,7 @@ export function cicloDoTecnico(mem: Memoria, ctx: CtxDiretoria, ultimoB: () => s
   } else if (ctx.dia > 1 && janelaDaSemana(semanaDoDia(ctx.dia)) === null) return;
   const rep = (id: string): number => ctx.entradas[id]?.clube.reputacao ?? 0;
   const minimo = livre ? 0 : rep(t.clubeId!);
+  const base = livre ? Math.max(t.reputacao, P.pisoLivre) : t.reputacao;
   const oferecer = (clube: string, motivo: PropostaTecnico['motivo']): boolean => {
     c.ultimaProposta = agora;
     const p: PropostaTecnico = { clube, reputacao: rep(clube), liga: ctx.entradas[clube]?.clube.liga ?? '', motivo, empregado: !livre, confianca: confiancaInicial(t, ctx.entradas[clube].clube) };
@@ -416,7 +419,7 @@ export function cicloDoTecnico(mem: Memoria, ctx: CtxDiretoria, ultimoB: () => s
     return r && contratarJogador(mem, ctx, clube, t);
   };
   for (const v of c.vagas) {
-    if (v.oferecida || v.clube === t.clubeId || v.clube === c.de || rep(v.clube) > t.reputacao + P.folga || rep(v.clube) < minimo) continue;
+    if (v.oferecida || v.clube === t.clubeId || v.clube === c.de || rep(v.clube) > base + P.folga || rep(v.clube) < minimo) continue;
     if (!mem.gestao.get(v.clube) || mem.gestao.get(v.clube)!.tecnico.humano) continue;
     v.oferecida = true;
     if (oferecer(v.clube, 'vaga')) return;
