@@ -59,7 +59,7 @@ Ordem: **Téc** Pas Dom Dri Cru Fin Lon Cab Des BP (GOL: Ref Mão Aér Saí Pés
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
 | 9 | **Sierra** (Alexander Sierra Moya) | 33 | COL | CA | D/2 | 1,85/84 | 11 14 13 10 14 10 17 04 13 | 12 15 07 13 17 18 15 15 13 | 10 09 12 12 16 | 13 12 13 | 14 | 14 | Pivô de costas, Cabeceador | Decisivo | 3/15 | 144 | 3,9 | 2026 |
 | 18 | **Pineda** (Carlos Pineda Rozo) | 27 | COL | CA | D/2 | 1,82/78 | 08 10 13 05 16 09 14 06 12 | 10 13 06 11 14 08 11 08 11 | 10 11 14 13 11 | 13 11 07 | 13 | 13 | Oportunista | Fominha | 12/9 | 71 | 6,6 | 2027 |
-| 29 | **Lotero** (Jhon Lotero Arias) | 20 | COL | CA | D/3 | 1,83/75 | 08 09 07 05 13 07 11 02 06 | 07 07 04 11 05 09 08 04 07 | 09 10 09 10 09 | 08 09 09 | 10 | 15 | Infiltrador | Inseguro | 14/12 | 21 | 2,6 | 2029 |
+| 29 | **Lotero** (Jhon Lotero Mejía) | 20 | COL | CA | D/3 | 1,83/75 | 08 09 07 05 13 07 11 02 06 | 07 07 04 11 05 09 08 04 07 | 09 10 09 10 09 | 08 09 09 | 10 | 15 | Infiltrador | Inseguro | 14/12 | 21 | 2,6 | 2029 |
 
 **Titulares (4-4-2):** Castaño (17), Malagón (15), Varela (15), Sabogal (14), Laverde (14), Mahecha (16), Fajardo (15), Páez (14), Beltrán (14), Sierra (14), Pineda (13).
 

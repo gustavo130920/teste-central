@@ -6,7 +6,7 @@ Ordem: **Téc** Pas Dom Dri Cru Fin Lon Cab Des BP (GOL: Ref Mão Aér Saí Pés
 ### Goleiros
 | Nº | Jogador | Id | Nac | Pos | Pé | Alt/Peso | Téc | Men | Fís | Oc | Nota | Pot | Traços | Pers | Amb/Leal | Sal | Valor | Contr |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| 1 | **Bertolini** (Agustín Bertolini Rossi) | 29 | ARG | GOL | D/3 | 1,91/88 | 19 15 16 17 18 15 | 11 14 14 07 16 12 12 11 10 | 09 11 13 13 17 | 14 11 12 | 16 | 16 | Paredão no 1x1, Distribuidor | Gelo | 10/13 | 390 | 37 | 2029 |
+| 1 | **Bertolini** (Agustín Bertolini Ferraro) | 29 | ARG | GOL | D/3 | 1,91/88 | 19 15 16 17 18 15 | 11 14 14 07 16 12 12 11 10 | 09 11 13 13 17 | 14 11 12 | 16 | 16 | Paredão no 1x1, Distribuidor | Gelo | 10/13 | 390 | 37 | 2029 |
 | 12 | **Saucedo** (Martín Saucedo Villar) | 35 | ARG | GOL | D/2 | 1,85/86 | 14 14 11 13 08 16 | 07 14 15 04 12 12 13 14 06 | 05 07 11 12 11 | 12 12 07 | 13 | 13 | Pegador de pênalti | — | 2/15 | 75 | 1,8 | 2026 |
 | 22 | **Zabala** (Thiago Zabala Ochoa) | 20 | ARG | GOL | D/3 | 1,92/82 | 11 11 11 14 05 10 | 06 09 08 04 07 09 07 06 05 | 06 08 11 12 10 | 10 06 04 | 11 | 17 | — | Pé no chão | 12/14 | 31 | 3,6 | 2030 |
 

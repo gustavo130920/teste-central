@@ -13,7 +13,7 @@ Ordem: **Téc** Pas Dom Dri Cru Fin Lon Cab Des BP (GOL: Ref Mão Aér Saí Pés
 ### Zagueiros
 | Nº | Jogador | Id | Nac | Pos | Pé | Alt/Peso | Téc | Men | Fís | Oc | Nota | Pot | Traços | Pers | Amb/Leal | Sal | Valor | Contr |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| 2© | **Ahumada** (Claudio Ahumada Bravo) | 33 | CHI | ZAG | D/2 | 1,86/85 | 11 10 04 05 04 06 15 09 08 | 08 13 10 10 14 17 14 15 13 | 06 07 10 09 13 | 14 14 08 | 12 | 12 | Xerife do jogo aéreo | Líder de vestiário | 3/17 | 49 | 1,2 | 2026 |
+| 2© | **Ahumada** (Claudio Ahumada Soto) | 33 | CHI | ZAG | D/2 | 1,86/85 | 11 10 04 05 04 06 15 09 08 | 08 13 10 10 14 17 14 15 13 | 06 07 10 09 13 | 14 14 08 | 12 | 12 | Xerife do jogo aéreo | Líder de vestiário | 3/17 | 49 | 1,2 | 2026 |
 | 3 | **Calleros** (Gastón Calleros Pereyra) | 28 | URU | ZAG | D/2 | 1,87/84 | 11 08 08 06 06 07 10 15 06 | 09 10 10 07 12 11 10 12 14 | 09 13 12 07 11 | 10 09 05 | 12 | 12 | Marcador implacável | Esquentado | 9/10 | 48 | 3,8 | 2028 |
 | 4 | **Lobos** (Rubén Lobos Carvajal) | 25 | CHI | ZAG | E/2 | 1,84/80 | 07 04 05 02 03 03 09 10 04 | 04 11 13 06 09 09 09 06 08 | 07 08 10 07 09 | 07 08 05 | 10 | 11 | Interceptador | — | 10/11 | 19 | 1,4 | 2027 |
 | 24 | **Montecinos** (Diego Montecinos Aedo) | 20 | CHI | ZAG | D/2 | 1,87/78 | 02 03 02 02 02 02 07 06 02 | 04 04 08 04 05 06 04 04 09 | 06 07 10 06 05 | 03 04 08 | 7 | 14 | — | Pé no chão | 11/13 | 6 | 0,6 | 2029 |
