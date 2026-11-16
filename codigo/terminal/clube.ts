@@ -1,5 +1,5 @@
 // Uso: npm run clube -- [SEMENTE] [--auto] [--entradas "1;Fulano;2;;;"] [--anos N]
-// Carreira com o clube do jogador (etapa 4, 8ª fatia, partes 8a, 8b1, 8b2 e 8b3; GDD-gestao 1 e 8, GDD-motor 7). Leitura de teclado síncrona.
+// Carreira com o clube do jogador (etapa 4, 8ª fatia, partes 8a, 8b1, 8b2 e 8b3; etapa 5, 5a1 base; GDD-gestao 1 e 8, GDD-motor 7). Leitura de teclado síncrona.
 // Enter em qualquer pergunta = "Avançar" (mantém o que está, ou deixa com a delegação).
 // --auto: Enter em tudo (teste rápido). --entradas: respostas na ordem, separadas por ";" (depois delas, Enter).
 import { readSync } from 'node:fs';
@@ -20,6 +20,8 @@ import type { Negociacao } from '../temporada/mercado.ts';
 import { folhaDoClube, orcamentoDe, tetoDe } from '../temporada/mercado.ts';
 import type { InfoMercado, Termos, Visto } from '../temporada/mercadoJogador.ts';
 import { acharJogador, alternarTransferivel, buscar, chanceDaNegociacao, enviar, iniciarCompra, iniciarRenovacao, luvasEmMi, observar, relatorio, responder, ver } from '../temporada/mercadoJogador.ts';
+import type { InfoBase } from '../temporada/baseJogador.ts';
+import { dispensarJovem, pedirEmprestimo, subirJovem } from '../temporada/baseJogador.ts';
 import { carregarBase } from './carregar.ts';
 
 // ---------- Entrada ----------
@@ -102,18 +104,19 @@ const tecnico = criarTecnicoDoJogador({ nome: nomeTec, origem, estilo, formacaoC
 assumirClube(m.tecnicos, clube, tecnico);
 console.log(`\n${tecnico.nome} assume o ${clube.nome} (Reputação ${tecnico.reputacao}). ${antigo.nome} fica livre.`);
 
-// Delegação (GDD-gestao 8). Na 8a, as áreas de negócio ficam sempre com a IA.
+// Delegação (GDD-gestao 8). Comercial segue com a IA; a base começa com o coordenador (5a1).
 const delegado: Record<Area, boolean> = { tatica: false, treino: false, imprensa: false, mercado: false, comercial: true, base: true };
-const SO_IA: Area[] = ['comercial', 'base'];
-const limites = { cargaMax: 'pesada' as Carga, tom: 'Humildade' };
+const SO_IA: Area[] = ['comercial'];
+const limites = { cargaMax: 'pesada' as Carga, tom: 'Humildade', idadeMinima: null as number | null };
 function menuDelegacao(): void {
   for (;;) {
     console.log('  Delegação: ' + (Object.keys(AREAS) as Area[]).map((a, i) => `${i + 1}) ${AREAS[a]}: ${delegado[a] ? 'delegado' : 'você'}${SO_IA.includes(a) ? ' (manual depois)' : ''}`).join(' · '));
-    console.log(`  Limites: carga máxima ${limites.cargaMax} · tom padrão ${limites.tom}. Atalhos: t) Técnico (campo com o auxiliar)  g) tudo com você  c) carga máxima  m) tom`);
-    const v = perguntar('  Mudar (número, t, g, c, m; Enter sai):');
+    console.log(`  Limites: carga máxima ${limites.cargaMax} · tom padrão ${limites.tom} · idade mínima para subir ${limites.idadeMinima ?? 'livre'}. Atalhos: t) Técnico (campo com o auxiliar)  g) tudo com você  c) carga máxima  m) tom  i) idade mínima`);
+    const v = perguntar('  Mudar (número, t, g, c, m, i; Enter sai):');
     if (!v) return;
     if (v === 't') { for (const a of ATALHOS.tecnico) delegado[a] = true; delegado.mercado = false; }
-    else if (v === 'g') for (const a of [...ATALHOS.tecnico, 'mercado' as Area]) delegado[a] = false;
+    else if (v === 'g') for (const a of [...ATALHOS.tecnico, 'mercado' as Area, 'base' as Area]) delegado[a] = false;
+    else if (v === 'i') { const n = Number(perguntar('  Idade mínima para o coordenador subir (16 a 19; Enter = livre):')); limites.idadeMinima = n >= 16 && n <= 19 ? n : null; }
     else if (v === 'c') limites.cargaMax = (['leve', 'normal', 'pesada'] as Carga[])[escolher('  Carga máxima 1) leve 2) normal 3) pesada:', 3) ?? 2];
     else if (v === 'm') limites.tom = perguntar('  Tom padrão (ex.: Humildade, Confiança):') || 'Humildade';
     else {
@@ -251,6 +254,27 @@ function telaJogador(j: Jogador, info: InfoMercado, mem: Memoria): void {
   if (meu && v === 'r') { const n = iniciarRenovacao(mem, clube.id, j.id); avisosDoMercado(mem); if (typeof n === 'string') console.log(`  ${n}`); else telaNegociacao(n, mem); }
   if (!meu && v === 'o') console.log(`  ${observar(mem, clube.id, j.id)}`);
   if (!meu && (v === 'c' || v === 'p')) { const n = iniciarCompra(mem, clube.id, j.id, info.dia, v === 'p'); if (typeof n === 'string') console.log(`  ${n}`); else telaNegociacao(n, mem); }
+}
+
+/** 5a1: base manual (subir, dispensar, emprestar na janela). Pot com a margem de 1 relatório, como o elenco. */
+function telaBase(info: InfoBase, mem: Memoria): void {
+  for (;;) {
+    const jovens = [...(mem.base.get(clube.id) ?? [])].sort((a, b) => b.nota - a.nota);
+    const pedidos = mem.baseJogador?.pedidos ?? [];
+    console.log(`--- Base (${jovens.length} jovens; elenco ${mem.elencos[clube.id].length}/${MERCADO.elenco.max}; sobe aos 20 ou sai) ---`);
+    jovens.forEach((j, i) => {
+      const v = ver(mem, clube.id, j, info.semana);
+      console.log(`    ${String(i + 1).padStart(2)}) ${j.posicao.padEnd(4)} ${j.nome.padEnd(20)} ${j.idade} anos · nota ${j.nota} · Pot ${v.pot ? `${v.pot.min}-${v.pot.max}` : '?'} · ${j.perfilJovem ?? '-'}${pedidos.includes(j.id) ? ' · empréstimo pedido' : ''}`);
+    });
+    const v = perguntar(`  s) subir  x) dispensar${info.janela !== null ? '  e) emprestar' : ''}  d) delegação  Enter = segue:`);
+    if (!v) return;
+    if (v === 'd') { menuDelegacao(); if (delegado.base) return; continue; }
+    const k = jovens.length ? escolher('  Número do jovem:', jovens.length) : null;
+    if (k === null) continue;
+    const j = jovens[k];
+    const erro = v === 's' ? subirJovem(mem, clube.id, j.id) : v === 'x' ? dispensarJovem(mem, clube.id, j.id) : v === 'e' ? pedirEmprestimo(mem, clube.id, j.id, info.dia) : 'Opção inválida.';
+    console.log(`  ${erro ?? (v === 's' ? `${j.nome} sobe ao profissional.` : v === 'x' ? `${j.nome} dispensado.` : `${j.nome}: o diretor procura um clube (resposta no próximo ciclo).`)}`);
+  }
 }
 
 function escolherDaLista(vs: Visto[], info: InfoMercado, mem: Memoria): void {
@@ -432,6 +456,14 @@ const controle: ControleJogador = {
 === Ano ${m.ano} · semana ${info.semana} (sem jogo) ===`);
     telaMercado(info, mem);
     return true;
+  },
+  base(info, mem) {
+    const st = mem.baseJogador;
+    if (st?.avisos.length) { for (const a of st.avisos) console.log(`  ${a}`); st.avisos = []; }
+    if (delegado.base) return limites.idadeMinima ? { idadeMinima: limites.idadeMinima } : null;
+    if (auto && !fila.length) return 'manual';
+    telaBase(info, mem);
+    return 'manual';
   },
   proposta(p) {
     const c = m.clubes.find((x) => x.id === p.clube);

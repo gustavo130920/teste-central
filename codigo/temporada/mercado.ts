@@ -31,7 +31,7 @@ export const CRIA = 'Cria da casa';
 /** PROVISORIO: moral de quem chega (GDD-gestao 3, recém-contratado). */
 const MORAL_CHEGADA = 65;
 
-export interface Emprestimo { jogador: string; origem: string; destino: string }
+export interface Emprestimo { jogador: string; origem: string; destino: string; /** 5a1: jovem da base emprestado sem subir (volta para a base). */ base?: boolean }
 export interface Transferencia { ano: number; semana: number; jogador: string; de: string | null; para: string; valor: number; tipo: 'compra' | 'livre' | 'emprestimo' | 'pre-contrato'; europa: boolean; cria: boolean }
 
 export interface ContagemMercado {
@@ -737,7 +737,8 @@ export function viradaContratos(mem: Memoria): { vencidos: number; preContratos:
     if (!j || !mem.elencos[e.origem]) continue;
     mem.elencos[e.destino] = mem.elencos[e.destino].filter((x) => x.id !== j.id);
     j.clubeId = e.origem;
-    mem.elencos[e.origem].push(j);
+    if (e.base && mem.base.has(e.origem)) { mem.base.get(e.origem)!.push(j); mem.jogadores.delete(j.id); }
+    else mem.elencos[e.origem].push(j);
     voltaram += 1;
   }
   m.emprestimos = [];

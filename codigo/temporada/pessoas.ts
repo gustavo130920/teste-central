@@ -210,7 +210,10 @@ export function viradaPessoas(mem: Memoria, w: MundoPessoas, rng: Rng): ResumoPe
     const g = mem.gestao.get(c)!;
     const base = mem.base.get(c)!;
     const integ = efetivo(g.comissao, 'Coord. base', 'Integ');
-    for (const j of escolherSubidas(mem.elencos[c], base, margemDoTecnico(g.tecnico))) {
+    // 5a1: base do clube do jogador manual (sem subidas) ou delegada com idade mínima.
+    const bj = mem.baseJogador?.clube === c ? mem.baseJogador : null;
+    const candidatos = !bj ? base : bj.manual ? [] : bj.idadeMinima === null ? base : base.filter((j) => j.idade >= bj.idadeMinima!);
+    for (const j of escolherSubidas(mem.elencos[c], candidatos, margemDoTecnico(g.tecnico))) {
       base.splice(base.indexOf(j), 1);
       subir(mem, c, j, integ);
       r.subiram += 1;
@@ -317,7 +320,7 @@ export function viradaPessoas(mem: Memoria, w: MundoPessoas, rng: Rng): ResumoPe
 }
 
 /** Subida ao profissional: Integração do coordenador no Trabalho e na moral (PROVISORIO: moral 60 + (Integração − 10)); vira Cria da casa. */
-function subir(mem: Memoria, clube: string, j: Jogador, integracao: number): void {
+export function subir(mem: Memoria, clube: string, j: Jogador, integracao: number): void {
   const s = mem.evolucao.get(j.id)!;
   if (s.trabalho !== null) s.trabalho = limitarTrabalho(s.trabalho + (integracao - 10) * PERFIL.integracao);
   if (!j.qualidades.includes('Cria da casa')) j.qualidades.push('Cria da casa');

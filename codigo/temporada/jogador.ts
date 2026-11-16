@@ -14,8 +14,9 @@ import type { Jogador } from '../motor/dados.ts';
 import type { InfoMercado } from './mercadoJogador.ts';
 import type { PropostaTecnico } from './diretoria.ts';
 import type { Avaliacao } from '../gestao/diretoria.ts';
+import type { InfoBase, RespostaBase } from './baseJogador.ts';
 
-/** Áreas de delegação (GDD-gestao 8). Compra e venda manual desde a 8b2; comercial e base seguem com a IA. */
+/** Áreas de delegação (GDD-gestao 8). Compra e venda manual desde a 8b2, base desde a 5a1; comercial segue com a IA. */
 export type Area = 'tatica' | 'treino' | 'imprensa' | 'mercado' | 'comercial' | 'base';
 export const AREAS: Record<Area, string> = {
   tatica: 'Tática e pausas', treino: 'Treino', imprensa: 'Imprensa', mercado: 'Compra e venda', comercial: 'Comercial, ingressos e sócio', base: 'Base',
@@ -140,6 +141,8 @@ export interface ControleJogador {
   proposta?(p: PropostaTecnico, mem: Memoria): boolean | null;
   /** 8b3: renovação oferecida na virada: anos (1 a 3), 0 recusa e fica livre; null aceita a duração sorteada (`anos`). */
   renovacao?(p: { clube: string; anos: number; confianca: number; avaliacao: Avaliacao }, mem: Memoria): number | null;
+  /** 5a1: base do ciclo. 'manual': o jogador age pelas funções de `baseJogador.ts`; { idadeMinima }: delegada com limite; null = IA. */
+  base?(info: InfoBase, mem: Memoria): RespostaBase;
   /** Nível da meta no início do ano; null deixa a diretoria escolher pela Ambição. */
   meta?(metas: Record<NivelMeta, Meta | null>, mem: Memoria): NivelMeta | null;
 }

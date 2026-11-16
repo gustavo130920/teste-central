@@ -3,6 +3,7 @@
 // Etapa 4, 1ª fatia: com `gestao`, comissão real e treino da IA (gestao/); sem ela, comissão neutra como na etapa 3.
 import type { Clube, Jogador, Profissional, Tatica, Tecnico } from '../motor/dados.ts';
 import type { ApoioComissao } from '../motor/tipos.ts';
+import type { EstadoBaseJogador } from './baseJogador.ts';
 import type { ComissaoClube } from '../gestao/comissao.ts';
 import { COMISSAO, apoioDaComissao, efetivo, naFaixa } from '../gestao/comissao.ts';
 import type { Carga, Ciclo, EstadoTreino } from '../gestao/treino.ts';
@@ -107,6 +108,8 @@ export interface Memoria {
   imprensa: ImprensaMundo | null;
   /** 8b3: vagas, propostas e histórico do técnico do jogador (criado sob demanda). */
   carreira?: EstadoCarreira;
+  /** 5a1: base manual e promessas de papel do clube do jogador (criado sob demanda). */
+  baseJogador?: EstadoBaseJogador;
 }
 
 /** Jogos e treino do clube nos períodos de 4 e de 13 semanas e no ano. */

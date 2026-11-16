@@ -22,6 +22,7 @@ import { FINANCAS } from '../gestao/financas.ts';
 import { fecharMesContas, jogoNasContas } from './contas.ts';
 import type { ContextoMercado } from './mercado.ts';
 import { cicloDoMercado } from './mercadoJogador.ts';
+import { cicloDaBase, promessasNoJogo } from './baseJogador.ts';
 import { atualizarContexto, criarMercado, periodoDeMercado, registrarEscalaEuropa, semanaDeMercado } from './mercado.ts';
 import type { Tecnico } from '../motor/dados.ts';
 import type { FichaDiretoria } from '../gestao/diretoria.ts';
@@ -173,7 +174,7 @@ export function simularTemporada(e: EntradaTemporada): Temporada {
         cicloNaImprensa(memoria, ctxDir, lados[k], { dia: j.dia, competicao: j.competicao, adversario: lados[1 - k], casa: k === 0 && !jc?.neutro, classico, decisao });
       }
       // Mercado do clube do jogador (8b2): rodadas do ciclo anterior e a tela, antes do treino e da lista do jogo; sorteio próprio, fora do da IA.
-      for (const k of [0, 1] as const) if (ehDoJogador(lados[k]) && comMercado) { cicloDoMercado(memoria, lados[k], j.dia, J!, rngDe(`jogador-mercado-${j.dia}-${j.competicao}`)); ultimoMercado = j.dia; }
+      for (const k of [0, 1] as const) if (ehDoJogador(lados[k]) && comMercado) { cicloDoMercado(memoria, lados[k], j.dia, J!, rngDe(`jogador-mercado-${j.dia}-${j.competicao}`)); cicloDaBase(memoria, lados[k], j.dia, J!, rngDe(`jogador-base-${j.dia}-${j.competicao}`)); ultimoMercado = j.dia; }
       const impeto = comImprensa ? impetoDoJogo(memoria, lados[0], lados[1]) : [0, 0];
       const prep = lados.map((c) => prepararJogo(memoria, c, j.dia, j.competicao, rngMem, ehDoJogador(c) && J!.treino ? (ciclo, ia) => J!.treino!(ciclo, ia, memoria) : undefined));
       // Próximo jogo do clube do jogador: titulares e padrão dele; sem escolha, o auxiliar (IA e adaptação).
@@ -216,6 +217,7 @@ export function simularTemporada(e: EntradaTemporada): Temporada {
         memoria.leituras.set(chave, lerJogo(r, k, memoria.leituras.get(chave)));
       }
       for (const k of [0, 1] as const) registrarJogo(memoria, lados[k], k, r, j.dia, j.competicao, prep[k].desfalques.suspensos, rngMem, decisao);
+      if (comMercado) for (const k of [0, 1] as const) promessasNoJogo(memoria, lados[k], k, r, prep[k].desfalques, j.dia);
       if (comDiretoria) for (const k of [0, 1] as const) torcidaDosDefeitos(memoria, lados[k], k, r, k === 0 && !jc?.neutro);
       if (comImprensa) for (const k of [0, 1] as const) {
         jogoNaImprensa(memoria, lados[k], k, r, { dia: j.dia, competicao: j.competicao, adversario: lados[1 - k], casa: k === 0 && !jc?.neutro, classico, decisao, pro: r.placar[k], contra: r.placar[1 - k] }, !copa);
@@ -242,7 +244,7 @@ export function simularTemporada(e: EntradaTemporada): Temporada {
     // Mercado (GDD-gestao 6): valor, relatórios e renovações a cada 4 semanas; janelas e livres toda semana.
     if (comMercado && dia % FINANCAS.diasMes === 0) periodoDeMercado(memoria, dia, rngDe(`mercado-periodo-${dia}`));
     if (comDiretoria && dia % 7 === 0) cicloDoTecnico(memoria, ctxDir, ultimosDaB);
-    if (comMercado && dia % 7 === 0 && J && ehDoJogador(J.clube) && ultimoMercado <= dia - 7) { cicloDoMercado(memoria, J.clube, dia, J, rngDe(`jogador-mercado-semana-${dia}`), true); ultimoMercado = dia; }
+    if (comMercado && dia % 7 === 0 && J && ehDoJogador(J.clube) && ultimoMercado <= dia - 7) { cicloDoMercado(memoria, J.clube, dia, J, rngDe(`jogador-mercado-semana-${dia}`), true); cicloDaBase(memoria, J.clube, dia, J, rngDe(`jogador-base-semana-${dia}`)); ultimoMercado = dia; }
     if (comMercado && dia % 7 === 0) semanaDeMercado(memoria, dia, rngDe(`mercado-semana-${dia}`));
     if (comDiretoria && comMercado && dia % 7 === 0) semanaNaDiretoria(memoria);
     if (memoria.financas.size && dia % FINANCAS.diasMes === 0 && dia <= FINANCAS.diasMes * FINANCAS.meses) fecharMesContas(memoria, dia, (id) => e.entradas[id].clube);

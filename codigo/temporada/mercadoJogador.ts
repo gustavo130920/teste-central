@@ -52,7 +52,8 @@ export function ver(mem: Memoria, clube: string, j: Jogador, semana: number): Vi
     // No próprio clube: nota exata e o Potencial com a margem de 1 relatório do olheiro de potencial.
     const mp = margemPot(1, o.precPot)!;
     const pot = limitar(j.potencial + ruido(clube, j.id, 'p') * mp, j.nota, 20);
-    return { j, clube, nota: { min: j.nota, max: j.nota }, pot: faixa(pot, mp), valor: j.valor, relatorios: 2, relatoriosPot: 1 };
+    const fp = faixa(pot, mp);
+    return { j, clube, nota: { min: j.nota, max: j.nota }, pot: { min: Math.max(j.nota, fp.min), max: fp.max }, valor: j.valor, relatorios: 2, relatoriosPot: 1 };
   }
   const mn = margemNota(k?.atual ?? 0, o.precAtual);
   const mp = margemPot(k?.pot ?? 0, o.precPot);
