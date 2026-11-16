@@ -1,0 +1,4 @@
+Versao de teste (nomes de clubes reais, so para teste privado).
+Nao abre com duplo clique no index.html: precisa de servidor local.
+Opcao 1: de duplo clique em abrir.bat (precisa de Python ou Node instalado) e abra http://localhost:8080
+Opcao 2: arraste esta pasta em https://app.netlify.com/drop
