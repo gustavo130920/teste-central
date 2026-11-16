@@ -10,6 +10,7 @@ import { EscolhaClube } from '@/telas/EscolhaClube';
 import { Painel } from '@/telas/Painel';
 import { Decisao } from '@/telas/Decisao';
 import { Gestao } from '@/telas/Gestao';
+import { Ajuda } from '@/telas/Ajuda';
 
 /** Pilha de telas: Esc volta uma tela (menos no painel, onde volta só pelo botão Início). */
 type Tela = 'inicio' | 'escolha' | 'painel' | 'prejogo' | 'partida' | 'fim' | 'gestao';
@@ -20,11 +21,14 @@ export default function App() {
   const [ocupado, setOcupado] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const [pre, setPre] = useState<PJ | null>(null);
+  const [ajuda, setAjuda] = useState(false);
   const [decisao, setDecisao] = useState<DecisaoTela | null>(null);
   const [aoVivo, setAoVivo] = useState<AoVivoTela | null>(null);
   const tela = pilha.at(-1)!;
   const raiz = useRef<HTMLDivElement>(null);
 
+  /** Primeira carreira: a ajuda abre sozinha uma vez. */
+  const primeiraVez = () => { try { if (localStorage.getItem('ajuda-vista')) return; localStorage.setItem('ajuda-vista', '1'); } catch { /* sem armazenamento: não insiste */ return; } setAjuda(true); };
   const ir = (t: Tela) => { setErro(null); setPilha((p) => [...p, t]); };
   const voltar = useCallback(() => { setErro(null); setPilha((p) => (p.length > 1 ? p.slice(0, -1) : p)); }, []);
   const executar = async (f: () => Promise<P>, depois?: () => void) => {
@@ -80,7 +84,7 @@ export default function App() {
       )}
       {tela === 'escolha' && (
         <EscolhaClube ocupado={ocupado} aoVoltar={voltar}
-          aoComecar={(n: NovoJogo) => executar(() => pedir('novoJogo', n), () => setPilha(['painel']))} />
+          aoComecar={(n: NovoJogo) => executar(() => pedir('novoJogo', n), () => { setPilha(['painel']); primeiraVez(); })} />
       )}
       {tela === 'painel' && painel && (
         <Painel painel={painel} ocupado={ocupado} erro={erro} aoSair={() => setPilha(['inicio'])}
@@ -95,6 +99,9 @@ export default function App() {
       )}
       {decisao && <Decisao d={decisao} ocupado={ocupado} erro={erro} aoResponder={(r: RespostaDecisao) => etapa(() => pedir('decidir', r), false)} />}
       {tela === 'fim' && aoVivo?.fim && <Fim v={aoVivo} aoVoltar={() => setPilha(['painel'])} />}
+      <button type="button" onClick={() => setAjuda(true)} aria-label="Abrir a ajuda"
+        className="fixed bottom-3 right-3 z-40 grid size-10 place-items-center rounded-full border border-linha bg-relva text-lg font-semibold text-musgo shadow-md hover:text-foreground">?</button>
+      <Ajuda aberta={ajuda} aoFechar={() => setAjuda(false)} />
     </main>
   );
 }

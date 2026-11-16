@@ -59,7 +59,7 @@ export function EscolhaClube({ aoComecar, aoVoltar, ocupado }: { aoComecar: (p: 
   );
 
   return (
-    <main className="mx-auto max-w-6xl px-4 py-6">
+    <div className="mx-auto max-w-6xl px-4 py-6">
       <header className="mb-5 flex flex-wrap items-baseline justify-between gap-3">
         <h1 className="text-3xl font-bold">Escolha o seu clube</h1>
         <Button variant="ghost" onClick={aoVoltar}>Voltar ao início</Button>
@@ -96,6 +96,6 @@ export function EscolhaClube({ aoComecar, aoVoltar, ocupado }: { aoComecar: (p: 
           </form>
         </aside>
       </div>
-    </main>
+    </div>
   );
 }
