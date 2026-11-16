@@ -101,11 +101,21 @@ export interface TimeEmCampo {
   ajusteFraco: boolean;
   /** Custo do ajuste da pausa no bloco seguinte (GDD 7): 1 leve, 0,9 médio, radical pelo Ajuste nas Pausas. */
   custoAjuste: number;
+  /** Instruções escolhidas pelo jogador (5b1); sem elas, o melhor encaixe. */
+  instrucoes?: InstrucoesManuais;
+  /** Batedores da tática (GDD 8); sem eles, o maior BP em campo. */
+  batedores?: Batedores;
   /** Fator casa vindo da Gestão (Humor e ocupação, GDD-gestao 9); sem ele, o PROVISORIO pela torcida. */
   casa?: number;
   /** Torcida hostil (Humor até 25): vaia em casa no fim do bloco com o time perdendo (GDD-gestao 9). */
   vaia?: boolean;
 }
+
+/** Id da instrução por jogador e fase (5b1). Vale enquanto ele joga numa vaga da instrução e a exigência está cumprida. */
+export type InstrucoesManuais = Record<string, { Com?: string; Sem?: string }>;
+export type TipoBatedor = 'escanteio' | 'falta' | 'penalti';
+/** Id do jogador por cobrança (GDD 8). */
+export type Batedores = Partial<Record<TipoBatedor, string>>;
 
 /** `padrao` troca instruções do time em relação ao estilo do técnico (GDD 5). */
 export interface EntradaTime {
@@ -130,6 +140,10 @@ export interface EntradaTime {
   impeto?: number;
   /** Titulares escolhidos (clube do jogador, 8ª fatia): entram primeiro e sem rodízio; sem ele, os melhores 11. */
   titulares?: string[];
+  /** Instruções individuais do jogador (5b1); sem elas, o melhor encaixe. */
+  instrucoes?: InstrucoesManuais;
+  /** Batedores (5b1); sem eles, o maior BP em campo. */
+  batedores?: Batedores;
 }
 
 /** O que a comissão e o treino do ciclo entregam ao motor (GDD-gestao 2 e 8). */

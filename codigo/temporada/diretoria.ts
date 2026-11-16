@@ -380,6 +380,8 @@ export function contratarJogador(mem: Memoria, ctx: CtxDiretoria, clube: string,
     carreira(mem).historico.push({ ano: ctx.ano, clube: antigo, fato: 'saiu por proposta' });
   }
   assumir(mem, ctx, clube, st, g, t, 'proposta');
+  // Táticas salvas vão junto (5b1); instruções e batedores eram do elenco antigo.
+  if (mem.taticaJogador) for (const x of mem.taticaJogador.taticas) Object.assign(x, { instrucoes: {}, batedores: {} });
   st.confianca = confiancaInicial(t, ctx.entradas[clube].clube);
   const c = carreira(mem);
   Object.assign(c, { livreDesde: null, de: null });

@@ -5,6 +5,7 @@ import type { Clube, Jogador, Profissional, Tatica, Tecnico } from '../motor/dad
 import type { ApoioComissao } from '../motor/tipos.ts';
 import type { EstadoBaseJogador } from './baseJogador.ts';
 import type { EstadoComercialJogador } from './comercialJogador.ts';
+import type { EstadoTaticaJogador } from './taticaJogador.ts';
 import type { ComissaoClube } from '../gestao/comissao.ts';
 import { COMISSAO, apoioDaComissao, efetivo, naFaixa } from '../gestao/comissao.ts';
 import type { Carga, Ciclo, EstadoTreino } from '../gestao/treino.ts';
@@ -113,6 +114,8 @@ export interface Memoria {
   baseJogador?: EstadoBaseJogador;
   /** Comercial do clube do jogador (5a2). */
   comercialJogador?: EstadoComercialJogador;
+  /** Táticas salvas do clube do jogador (5b1). */
+  taticaJogador?: EstadoTaticaJogador;
 }
 
 /** Jogos e treino do clube nos períodos de 4 e de 13 semanas e no ano. */
@@ -251,7 +254,7 @@ function lesionar(m: Memoria, j: Jogador, s: EstadoJogador, gravidade: Gravidade
  * Antes do jogo do clube no dia: ciclo desde o último jogo (treino, lesão no treino, recuperação, volta de lesão)
  * e lista de quem fica de fora. Devolve o elenco disponível e a condição de cada um.
  */
-export function prepararJogo(m: Memoria, clube: string, dia: number, competicao: string, rng: Rng, escolherTreino?: (ciclo: Ciclo, ia: { carga: Carga; foco: Foco }) => { carga: Carga; foco: Foco } | null): { elenco: Jogador[]; condicao: Record<string, number>; poupados: string[]; desfalques: Desfalques; apoio?: ApoioComissao; moral?: Record<string, number> } {
+export function prepararJogo(m: Memoria, clube: string, dia: number, competicao: string, rng: Rng, escolherTreino?: (ciclo: Ciclo, ia: { carga: Carga; foco: Foco }) => { carga: Carga; foco: Foco } | null, alvo?: { chave: string; semanas: number }): { elenco: Jogador[]; condicao: Record<string, number>; poupados: string[]; desfalques: Desfalques; apoio?: ApoioComissao; moral?: Record<string, number> } {
   const ultimo = m.ultimoJogo.get(clube);
   const elenco = m.elencos[clube];
   const ciclo = ultimo === undefined ? null : tipoCiclo(dia - ultimo);
@@ -261,10 +264,12 @@ export function prepararJogo(m: Memoria, clube: string, dia: number, competicao:
   let carga: Carga | undefined;
   if (g && ciclo && g.treinoPerdido) { g.treinoPerdido = false; cicloDeMoral(m, g, elenco, clube); }
   else if (g && ciclo) {
-    const chave = chaveTatica(g.tecnico);
-    const ia = decidirIA(g.treino, chave, g.semanas, ciclo);
+    // Clube do jogador (5b1): o foco Tática vai para a tática escolhida, não necessariamente a do jogo.
+    const chave = alvo?.chave ?? chaveTatica(g.tecnico);
+    const semanas = alvo?.semanas ?? g.semanas;
+    const ia = decidirIA(g.treino, chave, semanas, ciclo);
     const d = escolherTreino?.(ciclo, ia) ?? ia;
-    treinar(g.treino, chave, g.semanas, ciclo, d.carga, d.foco, treinoTatico(g.tecnico, g.comissao));
+    treinar(g.treino, chave, semanas, ciclo, d.carga, d.foco, treinoTatico(g.tecnico, g.comissao));
     carga = d.carga;
     // Evolução (GDD-gestao 5): média do ganho de treino dos ciclos (carga × ciclo) e foco mais usado no período.
     const p = m.periodo.get(clube);

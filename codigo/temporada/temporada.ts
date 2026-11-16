@@ -24,6 +24,7 @@ import type { ContextoMercado } from './mercado.ts';
 import { cicloDoMercado } from './mercadoJogador.ts';
 import { cicloDaBase, promessasNoJogo } from './baseJogador.ts';
 import { cicloDoComercial } from './comercialJogador.ts';
+import { alvoDoTreino } from './taticaJogador.ts';
 import { atualizarContexto, criarMercado, periodoDeMercado, registrarEscalaEuropa, semanaDeMercado } from './mercado.ts';
 import type { Tecnico } from '../motor/dados.ts';
 import type { FichaDiretoria } from '../gestao/diretoria.ts';
@@ -177,7 +178,7 @@ export function simularTemporada(e: EntradaTemporada): Temporada {
       // Mercado do clube do jogador (8b2): rodadas do ciclo anterior e a tela, antes do treino e da lista do jogo; sorteio próprio, fora do da IA.
       for (const k of [0, 1] as const) if (ehDoJogador(lados[k]) && comMercado) { cicloDoMercado(memoria, lados[k], j.dia, J!, rngDe(`jogador-mercado-${j.dia}-${j.competicao}`)); cicloDaBase(memoria, lados[k], j.dia, J!, rngDe(`jogador-base-${j.dia}-${j.competicao}`)); cicloDoComercial(memoria, lados[k], j.dia, J!); ultimoMercado = j.dia; }
       const impeto = comImprensa ? impetoDoJogo(memoria, lados[0], lados[1]) : [0, 0];
-      const prep = lados.map((c) => prepararJogo(memoria, c, j.dia, j.competicao, rngMem, ehDoJogador(c) && J!.treino ? (ciclo, ia) => J!.treino!(ciclo, ia, memoria) : undefined));
+      const prep = lados.map((c) => prepararJogo(memoria, c, j.dia, j.competicao, rngMem, ehDoJogador(c) && J!.treino ? (ciclo, ia) => J!.treino!(ciclo, ia, memoria) : undefined, ehDoJogador(c) && memoria.taticaJogador ? alvoDoTreino(memoria, c, e.tatica) : undefined));
       // Próximo jogo do clube do jogador: titulares e padrão dele; sem escolha, o auxiliar (IA e adaptação).
       const plano = lados.map((c, k) => (ehDoJogador(c) && J!.escalar ? J!.escalar({
         jogo: { dia: j.dia, competicao: j.competicao, adversario: lados[1 - k], casa: k === 0 && !jc?.neutro, classico, decisao },
@@ -196,7 +197,7 @@ export function simularTemporada(e: EntradaTemporada): Temporada {
         memoria.contagem.adaptacoes += 1;
         return aj.padrao;
       });
-      const entrada = (k: 0 | 1): EntradaTime => ({ ...(impeto[k] ? { impeto: impeto[k] } : {}), ...(plano[k]?.titulares ? { titulares: plano[k]!.titulares } : {}), ...e.entradas[lados[k]], elenco: prep[k].elenco, condicao: prep[k].condicao, poupados: prep[k].poupados, padrao: padrao[k] ?? e.entradas[lados[k]].padrao, apoio: prep[k].apoio, moral: prep[k].moral,
+      const entrada = (k: 0 | 1): EntradaTime => ({ ...(impeto[k] ? { impeto: impeto[k] } : {}), ...(plano[k]?.titulares ? { titulares: plano[k]!.titulares } : {}), ...(plano[k]?.instrucoes ? { instrucoes: plano[k]!.instrucoes } : {}), ...(plano[k]?.batedores ? { batedores: plano[k]!.batedores } : {}), ...e.entradas[lados[k]], elenco: prep[k].elenco, condicao: prep[k].condicao, poupados: prep[k].poupados, padrao: padrao[k] ?? e.entradas[lados[k]].padrao, apoio: prep[k].apoio, moral: prep[k].moral,
         ...(k === 0 && comDiretoria ? casa(lados[0], lados[1], j.competicao, decisao, !!jc?.neutro) : {}) });
       const kj = ([0, 1] as const).find((k) => ehDoJogador(lados[k]));
       const controle = kj !== undefined && J!.pausa ? controleDaPausa(memoria, lados[kj], kj, (info) => J!.pausa!(info, { dia: j.dia, competicao: j.competicao, adversario: lados[1 - kj], casa: kj === 0 && !jc?.neutro, classico, decisao }, memoria)) : undefined;

@@ -1,17 +1,20 @@
 // Uso: npm run clube -- [SEMENTE] [--auto] [--entradas "1;Fulano;2;;;"] [--anos N]
-// Carreira com o clube do jogador (etapa 4, 8ª fatia, partes 8a, 8b1, 8b2 e 8b3; etapa 5, 5a1 base, 5a2 comercial; GDD-gestao 1 e 8, GDD-motor 7). Leitura de teclado síncrona.
+// Carreira com o clube do jogador (etapa 4, 8ª fatia, partes 8a, 8b1, 8b2 e 8b3; etapa 5, 5a1 base, 5a2 comercial, 5b1 tática; GDD-gestao 1 e 8, GDD-motor 7). Leitura de teclado síncrona.
 // Enter em qualquer pergunta = "Avançar" (mantém o que está, ou deixa com a delegação).
 // --auto: Enter em tudo (teste rápido). --entradas: respostas na ordem, separadas por ";" (depois delas, Enter).
 import { readSync } from 'node:fs';
 import type { Jogador, PadraoTime } from '../motor/dados.ts';
-import type { AjustePausa, Lance, ResultadoPartida, Tom } from '../motor/tipos.ts';
+import type { AjustePausa, Lance, ResultadoPartida, TipoBatedor, Tom } from '../motor/tipos.ts';
 import { narrar } from '../narracao/narrar.ts';
 import type { Carga, Foco } from '../gestao/treino.ts';
 import type { NivelMeta } from '../gestao/diretoria.ts';
 import type { Memoria } from '../temporada/memoria.ts';
 import type { JogoDisputado } from '../temporada/temporada.ts';
 import type { Area, ControleJogador, FichaTecnico, InfoJogo, Origem } from '../temporada/jogador.ts';
-import { AREAS, ATALHOS, TECNICO_JOGADOR, assumirClube, criarTecnicoDoJogador, mudarTatica, progressoTatica } from '../temporada/jogador.ts';
+import { AREAS, ATALHOS, TECNICO_JOGADOR, assumirClube, criarTecnicoDoJogador, progressoTatica } from '../temporada/jogador.ts';
+import type { EstadoTaticaJogador } from '../temporada/taticaJogador.ts';
+import { TATICA_JOGADOR, apagarTatica, definirBatedor, definirInstrucao, estadoTatica, mudarEstiloFormacao, novaTatica, opcoesNaVaga, planoDoJogo, progressoDe, taticaAtiva, usarTatica } from '../temporada/taticaJogador.ts';
+import { previaDoOnze } from '../motor/escalacao.ts';
 import { criarMundo, jogarAno, virar } from '../temporada/virada.ts';
 import type { Papel } from '../gestao/mercado.ts';
 import { MERCADO, grupoDe, semanaDoDia } from '../gestao/mercado.ts';
@@ -145,7 +148,6 @@ const CARGAS: Carga[] = ['leve', 'normal', 'pesada'];
 const FOCOS: Foco[] = ['tatica', 'fisico', 'tecnico', 'bolaParada', 'adversario'];
 let ultimoTreino: { carga: Carga; foco: Foco } | null = null;
 let titulares: string[] | null = null;
-let padrao: Partial<PadraoTime> = {};
 const rodada: JogoDisputado[] = [];
 let ultimoDoClube: { d: JogoDisputado; r: ResultadoPartida } | null = null;
 let avisadoLivre = false;
@@ -154,6 +156,70 @@ const PADRAO: [keyof PadraoTime, string[]][] = [
   ['linha', ['Alta', 'Média', 'Baixa']], ['pressao', ['Alta', 'Média', 'Baixa']], ['largura', ['Aberta', 'Normal', 'Estreita']],
   ['ritmo', ['Rápido', 'Normal', 'Lento']], ['saida', ['Curta', 'Mista', 'Direta']],
 ];
+
+// ---------- Tática profunda (5b1) ----------
+const BATEDORES: Record<TipoBatedor, string> = { escanteio: 'escanteio', falta: 'falta', penalti: 'pênalti' };
+const pct = (x: number): string => `${(x * 100).toFixed(0)}%`;
+function onzeDaTela(mem: Memoria, elenco: Jogador[], poupados: string[]) {
+  return previaDoOnze(elenco, m.tatica, taticaAtiva(mem, clube.id).formacaoComBola, titulares ?? undefined, poupados);
+}
+function telaInstrucoes(mem: Memoria, elenco: Jogador[], poupados: string[]): void {
+  for (;;) {
+    const a = taticaAtiva(mem, clube.id);
+    const onze = onzeDaTela(mem, elenco, poupados);
+    console.log(`  Instruções individuais (${a.nome}, ${a.estilo}; * = sua, sem * = do auxiliar pelo melhor encaixe):`);
+    onze.forEach(({ j, vaga }, i) => {
+      const fase = (f: 'Com' | 'Sem'): string => {
+        const ops = opcoesNaVaga(j, vaga, f, m.tatica, a);
+        const sua = ops.find((o) => o.ins.id === a.instrucoes[j.id]?.[f]);
+        const o = sua ?? ops.find((x) => x.auxiliar);
+        return o ? `${sua ? '*' : ''}${o.ins.nome} ${pct(o.encaixe)}` : '-';
+      };
+      console.log(`    ${String(i + 1).padStart(2)}) ${vaga.padEnd(5)} ${j.nome.padEnd(18)} com: ${fase('Com').padEnd(32)} sem: ${fase('Sem')}`);
+    });
+    const k = escolher('  Jogador (número; Enter sai):', onze.length);
+    if (k === null) return;
+    const { j, vaga } = onze[k];
+    const f = escolher('  1) com a bola  2) sem a bola:', 2);
+    if (f === null) continue;
+    const fase = f === 0 ? 'Com' : 'Sem';
+    const ops = opcoesNaVaga(j, vaga, fase, m.tatica, a);
+    ops.forEach((o, i) => console.log(`    ${String(i + 1).padStart(2)}) ${o.ins.nome.padEnd(28)} encaixe ${pct(o.encaixe)}${o.contraria ? ' · contraria o estilo (× 0,9)' : o.ins.combina.includes(a.estilo) ? ' · combina (× 1,05)' : ''}${o.auxiliar ? ' · auxiliar' : ''} · ${o.ins.chaves.join(', ')}${o.ins.exige ? ` · exige ${o.ins.exige}` : ''}`));
+    const x = escolher('  Instrução (número; Enter = auxiliar escolhe):', ops.length);
+    definirInstrucao(mem, clube.id, j.id, fase, x === null ? null : ops[x].ins.id);
+  }
+}
+function telaBatedores(mem: Memoria, elenco: Jogador[], poupados: string[]): void {
+  for (;;) {
+    const a = taticaAtiva(mem, clube.id);
+    const tipos = Object.keys(BATEDORES) as TipoBatedor[];
+    console.log(`  Batedores (${a.nome}; fora de campo, cobra o maior BP): ${tipos.map((k, i) => `${i + 1}) ${BATEDORES[k]}: ${a.batedores[k] ? nomeJogador(a.batedores[k]!) : 'maior BP'}`).join('  ')}`);
+    const k = escolher('  Cobrança (número; Enter sai):', tipos.length);
+    if (k === null) return;
+    const tipo = tipos[k];
+    const traco = tipo === 'penalti' ? 'Cobrador de pênalti' : tipo === 'escanteio' ? 'Batedor de escanteio' : 'Cobrador de falta';
+    const onze = onzeDaTela(mem, elenco, poupados).map((x) => x.j).sort((x, y) => (y.atributos.BP ?? 0) - (x.atributos.BP ?? 0));
+    onze.forEach((j, i) => console.log(`    ${String(i + 1).padStart(2)}) ${j.posicao.padEnd(5)} ${j.nome.padEnd(18)} BP ${j.atributos.BP ?? '-'}${tipo === 'penalti' ? ` · Comp ${j.atributos.Comp ?? '-'}` : ''}${j.tracos.includes(traco) ? ` · ${traco}` : ''}`));
+    const x = escolher('  Batedor (número; Enter = maior BP):', onze.length);
+    definirBatedor(mem, clube.id, tipo, x === null ? null : onze[x].id);
+  }
+}
+function telaTaticas(mem: Memoria, est: EstadoTaticaJogador): void {
+  for (;;) {
+    console.log(`  Táticas salvas (até ${TATICA_JOGADOR.max}; o foco Tática dá 100% à marcada para treino e 25% às outras):`);
+    est.taticas.forEach((x, i) => console.log(`    ${i + 1}) ${x.nome.padEnd(10)} ${x.estilo}, ${x.formacaoComBola} / ${x.formacaoSemBola} · entrosamento ${pct(progressoDe(mem, clube.id, m.tatica, x))}${i === est.ativa ? ' · [jogo]' : ''}${i === est.treinar ? ' · [treino]' : ''}`));
+    const v = perguntar('  uN) usar no jogo  n) nova (cópia da atual)  rN) treinar  xN) apagar  (ex.: u2; Enter sai):').toLowerCase();
+    if (!v) return;
+    const i = Number(v.slice(1)) - 1;
+    let erro: string | null = null;
+    if (v === 'n') erro = novaTatica(mem, clube.id, perguntar('  Nome (Enter = automático):') || undefined);
+    else if (v[0] === 'u' && est.taticas[i]) usarTatica(mem, clube.id, m.tatica, i);
+    else if (v[0] === 'r' && est.taticas[i]) est.treinar = i;
+    else if (v[0] === 'x') erro = apagarTatica(mem, clube.id, i);
+    else erro = 'Opção inválida.';
+    if (erro) console.log(`  ${erro}`);
+  }
+}
 
 // ---------- Partida interativa (8b1) ----------
 const PERIGO = ['gol', 'finalizacao', 'goleiro', 'penalti', 'lesao'];
@@ -403,13 +469,17 @@ const controle: ControleJogador = {
     despejarLog(mem);
     if (delegado.tatica) return null;
     const g = mem.gestao.get(clube.id)!;
+    const est = estadoTatica(mem, clube.id);
     for (;;) {
       const t = g.tecnico;
-      console.log(`--- 5. Próximo jogo: ${nome(p.jogo.adversario)} · ${t.estilo}, ${t.formacaoComBola} / ${t.formacaoSemBola} · entrosamento ${(progressoTatica(mem, clube.id) * 100).toFixed(0)}% · ajustes ${Object.entries(padrao).map(([k, v]) => `${k} ${v}`).join(', ') || 'nenhum'} ---`);
+      const a = taticaAtiva(mem, clube.id);
+      const nIns = Object.values(a.instrucoes).reduce((s, x) => s + (x.Com ? 1 : 0) + (x.Sem ? 1 : 0), 0);
+      const bats = (Object.keys(BATEDORES) as TipoBatedor[]).filter((k) => a.batedores[k]).map((k) => `${BATEDORES[k]} ${nomeJogador(a.batedores[k]!)}`);
+      console.log(`--- 5. Próximo jogo: ${nome(p.jogo.adversario)} · ${a.nome}: ${t.estilo}, ${t.formacaoComBola} / ${t.formacaoSemBola} · entrosamento ${(progressoTatica(mem, clube.id) * 100).toFixed(0)}% · ajustes ${Object.entries(a.padrao).map(([k, v]) => `${k} ${v}`).join(', ') || 'nenhum'} · instruções suas ${nIns} · batedores ${bats.join(', ') || 'maior BP'} ---`);
       const fora = [...p.desfalques.lesionados.map((id) => `${m.elencos[clube.id].find((j) => j.id === id)?.nome} (lesão)`), ...p.desfalques.suspensos.map((id) => `${m.elencos[clube.id].find((j) => j.id === id)?.nome} (suspenso)`)];
       if (fora.length) console.log(`  Fora: ${fora.join(', ')}`);
       console.log(`  Titulares: ${titulares ? titulares.filter((id) => p.elenco.some((j) => j.id === id)).map((id) => p.elenco.find((j) => j.id === id)!.nome).join(', ') + ' (o auxiliar completa as vagas)' : 'o auxiliar escolhe os melhores (poupa quem está abaixo de 70)'}`);
-      const v = perguntar('  e) escolher titulares  a) auxiliar escolhe  t) estilo e formação  p) ajustes do padrão  d) delegação  Enter = jogar:');
+      const v = perguntar('  e) escolher titulares  a) auxiliar escolhe  t) estilo e formação  p) ajustes do padrão  i) instruções individuais  b) batedores  s) táticas salvas  d) delegação  Enter = jogar:');
       if (!v) break;
       if (v === 'e') {
         p.elenco.forEach((j: Jogador, i) => console.log(`    ${String(i + 1).padStart(2)}) ${j.posicao.padEnd(4)} ${j.nome.padEnd(18)} nota ${j.nota} · condição ${p.condicao[j.id] ?? 100} · moral ${estado(mem, j.id)?.moral.toFixed(0) ?? '-'}`));
@@ -421,16 +491,19 @@ const controle: ControleJogador = {
         const e = escolher(`  Estilo (Enter = ${t.estilo}):`, estilos.length);
         const c = escolher(`  Com a bola, ${lista(formacoes)} (Enter = ${t.formacaoComBola}):`, formacoes.length);
         const s = escolher(`  Sem a bola (Enter = ${t.formacaoSemBola}):`, formacoes.length);
-        mudarTatica(mem, clube.id, m.tatica, { estilo: e === null ? t.estilo : estilos[e], formacaoComBola: c === null ? t.formacaoComBola : formacoes[c], formacaoSemBola: s === null ? t.formacaoSemBola : formacoes[s] });
+        mudarEstiloFormacao(mem, clube.id, m.tatica, { estilo: e === null ? t.estilo : estilos[e], formacaoComBola: c === null ? t.formacaoComBola : formacoes[c], formacaoSemBola: s === null ? t.formacaoSemBola : formacoes[s] });
       } else if (v === 'p') {
         for (const [k, ops] of PADRAO) {
-          const x = escolher(`  ${k}: ${lista(ops)} (Enter = do estilo${padrao[k] ? `, hoje ${padrao[k]}` : ''}):`, ops.length);
-          if (x === null) delete padrao[k]; else (padrao as Record<string, string>)[k] = ops[x];
+          const x = escolher(`  ${k}: ${lista(ops)} (Enter = do estilo${a.padrao[k] ? `, hoje ${a.padrao[k]}` : ''}):`, ops.length);
+          if (x === null) delete a.padrao[k]; else (a.padrao as Record<string, string>)[k] = ops[x];
         }
-      } else if (v === 'd') { menuDelegacao(); if (delegado.tatica) return null; }
+      } else if (v === 'i') telaInstrucoes(mem, p.elenco, p.poupados);
+      else if (v === 'b') telaBatedores(mem, p.elenco, p.poupados);
+      else if (v === 's') telaTaticas(mem, est);
+      else if (v === 'd') { menuDelegacao(); if (delegado.tatica) return null; }
     }
     console.log('--- 6. Jogar ---');
-    return { ...(titulares ? { titulares } : {}), ...(Object.keys(padrao).length ? { padrao } : {}) };
+    return { ...(titulares ? { titulares } : {}), ...planoDoJogo(mem, clube.id) };
   },
   pausa(info, jogo) {
     if (delegado.tatica) return null;
@@ -524,7 +597,7 @@ const controle: ControleJogador = {
     const ok = v ? v === 's' : !p.empregado;
     if (ok && c) {
       clube = c;
-      titulares = null; padrao = {}; ultimoTreino = null; ultimoDoClube = null; avisadoLivre = false;
+      titulares = null; ultimoTreino = null; ultimoDoClube = null; avisadoLivre = false;
       console.log(`${tecnico.nome} assume o ${c.nome}.`);
     }
     return ok;

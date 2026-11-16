@@ -73,6 +73,19 @@ export function opcoesInstrucao(
   return catalogo.filter((ins) => ins.posicao === POSICAO_INSTRUCAO[e.vaga] && ins.fase === fase && !ins.contraria.includes(estilo) && exigenciaCumprida(ins, padrao, zagueiros));
 }
 
+/** Instruções que o jogador pode escolher na vaga (5b1): inclui as que Contrariam o estilo (coerência × 0,9). */
+export function opcoesDoJogador(vaga: Posicao, fase: Instrucao['fase'], catalogo: Instrucao[], padrao: PadraoTime, zagueiros: number): Instrucao[] {
+  return catalogo.filter((ins) => ins.posicao === POSICAO_INSTRUCAO[vaga] && ins.fase === fase && exigenciaCumprida(ins, padrao, zagueiros));
+}
+
+/** Instrução escolhida pelo jogador, se ainda vale na vaga atual (posição e exigência); senão null. */
+export function instrucaoManual(
+  e: Escalado, fase: Instrucao['fase'], id: string | undefined, catalogo: Instrucao[], padrao: PadraoTime, zagueiros: number,
+): Instrucao | null {
+  if (!id) return null;
+  return opcoesDoJogador(e.vaga, fase, catalogo, padrao, zagueiros).find((ins) => ins.id === id) ?? null;
+}
+
 /** Melhor encaixe (decisão do Gustavo, 09/11/2026): maior eficácia final. */
 export function escolherInstrucao(
   e: Escalado, fase: Instrucao['fase'], catalogo: Instrucao[], estilo: string, padrao: PadraoTime, zagueiros: number,

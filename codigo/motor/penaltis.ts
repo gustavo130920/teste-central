@@ -15,10 +15,11 @@ export interface ResultadoDisputa { placar: [number, number]; vencedor: 0 | 1; c
 const extra = (e: Escalado): number =>
   (temQualidade(e, 'Gelo') ? DISPUTA.bonus : 0) + (temQualidade(e, 'Decisivo') ? DISPUTA.bonus : 0) + (e.j.tracos.includes('Cobrador de pênalti') ? GDD.bolaParada.penalti.traco : 0);
 
-/** Ordem dos batedores: maior média de BP e Comp primeiro, goleiro por último. */
+/** Ordem dos batedores: o de pênalti da tática primeiro (5b1), depois maior média de BP e Comp, goleiro por último. */
 export function ordemBatedores(t: TimeEmCampo): Escalado[] {
   const nota = (e: Escalado): number => (lerAtributo(e, 'BP') + lerAtributo(e, 'Comp')) / 2;
-  return [...t.escalados].sort((a, b) => Number(a === t.goleiro) - Number(b === t.goleiro) || nota(b) - nota(a) || a.j.id.localeCompare(b.j.id));
+  const primeiro = (e: Escalado): number => Number(e.j.id !== t.batedores?.penalti);
+  return [...t.escalados].sort((a, b) => Number(a === t.goleiro) - Number(b === t.goleiro) || primeiro(a) - primeiro(b) || nota(b) - nota(a) || a.j.id.localeCompare(b.j.id));
 }
 
 export function chanceCobranca(bat: Escalado, gol: Escalado): number {

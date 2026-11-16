@@ -2,7 +2,7 @@
 import type { Formacao, Jogador, PadraoTime, PecaFormacao, Posicao, Tatica } from './dados.ts';
 import { APOIO_NEUTRO, GDD, PROVISORIO, RESPALDO } from './parametros.ts';
 import { NOTA } from './notas.ts';
-import { calcularRetorno, eficaciaFinal, escolherInstrucao, exigenciaCumprida, faixaPeloBloco, montarPesos, notasEfetivas } from './plano.ts';
+import { calcularRetorno, eficaciaFinal, escolherInstrucao, exigenciaCumprida, instrucaoManual, faixaPeloBloco, montarPesos, notasEfetivas } from './plano.ts';
 import type { Rng } from './rng.ts';
 import { calcularEfeitos } from './sinergias.ts';
 import type { EntradaTime, Escalado, TimeEmCampo } from './tipos.ts';
@@ -89,6 +89,13 @@ const formacao = (t: Tatica, nome: string): Formacao => {
   return f;
 };
 
+/** Prévia dos 11 e da vaga de cada um, como o motor escala (tela de tática, 5b1). */
+export function previaDoOnze(elenco: Jogador[], tatica: Tatica, formacaoComBola: string, titulares?: string[], poupados?: string[]): { j: Jogador; vaga: Posicao }[] {
+  const com = formacao(tatica, formacaoComBola).pecas;
+  const onze = titulares ? escolherOnze(elenco, com, new Set(titulares)) : pouparCansados(escolherOnze(elenco, com), elenco, com, new Set(poupados ?? []));
+  return onze.flatMap((j, i) => (j ? [{ j, vaga: com[i].posicao }] : []));
+}
+
 export function montarTime(indice: 0 | 1, ent: EntradaTime, tatica: Tatica, rng: Rng, classico: boolean): TimeEmCampo {
   const estilo = tatica.estilos.find((e) => e.nome === ent.tecnico.estilo);
   if (!estilo) throw new Error(`Estilo desconhecido: ${ent.tecnico.estilo}`);
@@ -110,6 +117,8 @@ export function montarTime(indice: 0 | 1, ent: EntradaTime, tatica: Tatica, rng:
     presencaCom: [], presencaContra: [], efeitos: calcularEfeitos([], [], padrao),
     confronto: { pressaoSaida: 0, velocidadeCostas: 0, criacaoBloco: 0, viabilidade: 0 },
     apoio: { ...APOIO_NEUTRO, ...ent.apoio },
+    ...(ent.instrucoes ? { instrucoes: ent.instrucoes } : {}),
+    ...(ent.batedores ? { batedores: ent.batedores } : {}),
   };
   for (const e of escalados) escolherAsDuas(e, t, tatica);
   prepararTime(t, tatica);
@@ -130,9 +139,16 @@ function novoEscalado(j: Jogador, time: 0 | 1, vaga: Posicao, zonaCom: number, z
 
 const contarZagueiros = (t: TimeEmCampo): number => t.escalados.filter((e) => e.vaga === 'ZAG').length;
 
+/** Instrução da fase: a do jogador se ainda vale (5b1), senão o melhor encaixe. */
+function escolherFase(e: Escalado, fase: 'Com' | 'Sem', t: TimeEmCampo, tatica: Tatica, zagueiros: number) {
+  return instrucaoManual(e, fase, t.instrucoes?.[e.j.id]?.[fase], tatica.instrucoes, t.padrao, zagueiros)
+    ?? escolherInstrucao(e, fase, tatica.instrucoes, t.estilo.nome, t.padrao, zagueiros);
+}
+
 export function escolherAsDuas(e: Escalado, t: TimeEmCampo, tatica: Tatica): void {
-  e.instrCom = escolherInstrucao(e, 'Com', tatica.instrucoes, t.estilo.nome, t.padrao, contarZagueiros(t));
-  e.instrSem = escolherInstrucao(e, 'Sem', tatica.instrucoes, t.estilo.nome, t.padrao, contarZagueiros(t));
+  const z = contarZagueiros(t);
+  e.instrCom = escolherFase(e, 'Com', t, tatica, z);
+  e.instrSem = escolherFase(e, 'Sem', t, tatica, z);
 }
 
 /** Refaz notas, mapas e efeitos a partir do plano atual. Roda no início de cada bloco (GDD 1 e 4). */
@@ -145,8 +161,14 @@ export function prepararTime(t: TimeEmCampo, tatica: Tatica): void {
     e.zonaSem = goleiro ? e.zonaSemBase : zonaDe(corredor(e.zonaSemBase), faixaPeloBloco(faixa(e.zonaSemBase), t.notas.Bloco, defensor));
     e.retorno = calcularRetorno(distancia(e.zonaCom, e.zonaSem), t.notas.Risco);
     // Ajuste de linha na pausa pode invalidar uma instrução que exige Linha Alta.
-    if (e.instrCom && !exigenciaCumprida(e.instrCom, t.padrao, zagueiros)) e.instrCom = escolherInstrucao(e, 'Com', tatica.instrucoes, t.estilo.nome, t.padrao, zagueiros);
-    if (e.instrSem && !exigenciaCumprida(e.instrSem, t.padrao, zagueiros)) e.instrSem = escolherInstrucao(e, 'Sem', tatica.instrucoes, t.estilo.nome, t.padrao, zagueiros);
+    // A do jogador volta assim que a exigência é cumprida de novo (5b1).
+    const manual = t.instrucoes?.[e.j.id];
+    const mCom = instrucaoManual(e, 'Com', manual?.Com, tatica.instrucoes, t.padrao, zagueiros);
+    const mSem = instrucaoManual(e, 'Sem', manual?.Sem, tatica.instrucoes, t.padrao, zagueiros);
+    if (mCom) e.instrCom = mCom;
+    if (mSem) e.instrSem = mSem;
+    if (e.instrCom && !exigenciaCumprida(e.instrCom, t.padrao, zagueiros)) e.instrCom = escolherFase(e, 'Com', t, tatica, zagueiros);
+    if (e.instrSem && !exigenciaCumprida(e.instrSem, t.padrao, zagueiros)) e.instrSem = escolherFase(e, 'Sem', t, tatica, zagueiros);
     const fator = t.apoio.entrosamento * (t.ajusteFraco ? RESPALDO.fator : 1) * t.custoAjuste;
     e.efCom = e.instrCom ? eficaciaFinal(e, e.instrCom, t.estilo.nome, fator) : 0;
     e.efSem = e.instrSem ? eficaciaFinal(e, e.instrSem, t.estilo.nome, fator) : 0;

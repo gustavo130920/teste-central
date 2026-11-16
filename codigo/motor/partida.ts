@@ -348,7 +348,7 @@ function cobrarPenalti(st: Estado, x: Elo): Fim {
   const iDef = def.indice;
   const p = GDD.bolaParada.penalti;
   registrar(st, 'penalti', 'Marcado', iAtk, { jogador: portador, jogador2: marcador, origem: x.zona, resultado: 'pênalti' });
-  const batedor = escolherBatedor(atk);
+  const batedor = escolherBatedor(atk, 'penalti');
   const gol = def.goleiro;
   const vBat = valorJogador(batedor, ['BP', 'Comp'], (batedor.j.tracos.includes('Cobrador de pênalti') ? p.traco : 0) + bonusDecisivo(st, batedor));
   const vGol = valorJogador(gol, ['Ref', 'Agi'], (gol.j.tracos.includes('Pegador de pênalti') ? p.traco : 0) + def.apoio.estudoBatedores);
@@ -398,7 +398,7 @@ function bolaAfastada(st: Estado, atk: TimeEmCampo, def: TimeEmCampo, zagueiro: 
 /** Bola na área em duas etapas, para escanteio e falta cruzada (GDD 8). */
 function bolaNaArea(st: Estado, atk: TimeEmCampo, def: TimeEmCampo, lance: 'Escanteio' | 'Falta perigosa', origem: number): Fim {
   const iAtk = atk.indice;
-  const batedor = escolherBatedor(atk);
+  const batedor = escolherBatedor(atk, lance === 'Escanteio' ? 'escanteio' : 'falta');
   const bonus = bonusEnsaiada(atk);
   const atacante = st.rng.um(melhoresNoAlto(atk, batedor));
   const zagueiro = st.rng.um(melhoresNoAlto(def, null));
@@ -416,7 +416,7 @@ function bolaNaArea(st: Estado, atk: TimeEmCampo, def: TimeEmCampo, lance: 'Esca
 
 function cobrarFaltaPerigosa(st: Estado, atk: TimeEmCampo, def: TimeEmCampo, z: number): Fim {
   if (!st.rng.pct(PROVISORIO.cobrancaDireta)) return bolaNaArea(st, atk, def, 'Falta perigosa', z);
-  const batedor = escolherBatedor(atk);
+  const batedor = escolherBatedor(atk, 'falta');
   st.est[atk.indice].cobrancasDiretas += 1;
   registrar(st, 'bola_parada', 'Falta perigosa', atk.indice, { jogador: batedor, goleiro: def.goleiro, origem: z, resultado: 'cobrança direta' });
   const x: Elo = { atk, def, portador: batedor, receptor: null, marcador: null, zona: z, origem: z, elo: 0, transicao: false, contra: false };

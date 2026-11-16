@@ -1,7 +1,7 @@
 // Contas de bola parada e cartões (GDD 8 e Anexo A), sem sorteio.
 import { limitar, lerAtributo } from './disputa.ts';
 import { GDD, PROVISORIO } from './parametros.ts';
-import type { Escalado, TimeEmCampo } from './tipos.ts';
+import type { Escalado, TimeEmCampo, TipoBatedor } from './tipos.ts';
 
 const chanceBola = (base: number, atk: number, def: number): number =>
   limitar(base + GDD.pontosPorAtributo * (atk - def), GDD.chanceMin, GDD.chanceMax);
@@ -14,9 +14,11 @@ export function chancePenalti(vBatedor: number, vGoleiro: number): number {
   return limitar(p.base + p.porPonto * (vBatedor - vGoleiro), p.min, p.max);
 }
 
-/** Sem batedor definido na tática, cobra quem tem o maior BP em campo (GDD 8). Empate: o primeiro da escalação. */
-export function escolherBatedor(t: TimeEmCampo): Escalado {
-  return t.escalados.reduce((m, e) => (lerAtributo(e, 'BP') > lerAtributo(m, 'BP') ? e : m));
+/** Batedor da tática se está em campo (5b1); sem definição, cobra quem tem o maior BP em campo (GDD 8). Empate: o primeiro da escalação. */
+export function escolherBatedor(t: TimeEmCampo, tipo?: TipoBatedor): Escalado {
+  const id = tipo ? t.batedores?.[tipo] : undefined;
+  const definido = id ? t.escalados.find((e) => e.j.id === id) : undefined;
+  return definido ?? t.escalados.reduce((m, e) => (lerAtributo(e, 'BP') > lerAtributo(m, 'BP') ? e : m));
 }
 
 /** Bônus de quem cobra: analista (entra com a Gestão) e estilo Bola Parada, em BP e Cab. */
