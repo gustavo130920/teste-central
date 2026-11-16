@@ -39,7 +39,7 @@ export const LIGAS = ['serie-a', 'serie-b', 'argentina', 'colombia', 'chile'] as
 const DECISAO = ['Quartas', 'Semifinal', 'Final'];
 
 import type { ControleJogador } from './jogador.ts';
-import { confiancaInicial } from './jogador.ts';
+import { confiancaInicial, controleDaPausa } from './jogador.ts';
 export interface JogoDisputado extends Jogo, ResultadoJogo {
   semente: number;
   desfalques: [Desfalques, Desfalques];
@@ -187,7 +187,9 @@ export function simularTemporada(e: EntradaTemporada): Temporada {
       });
       const entrada = (k: 0 | 1): EntradaTime => ({ ...(impeto[k] ? { impeto: impeto[k] } : {}), ...(plano[k]?.titulares ? { titulares: plano[k]!.titulares } : {}), ...e.entradas[lados[k]], elenco: prep[k].elenco, condicao: prep[k].condicao, poupados: prep[k].poupados, padrao: padrao[k] ?? e.entradas[lados[k]].padrao, apoio: prep[k].apoio, moral: prep[k].moral,
         ...(k === 0 && comDiretoria ? casa(lados[0], lados[1], j.competicao, decisao, !!jc?.neutro) : {}) });
-      const r = simularPartida({ mandante: entrada(0), visitante: entrada(1), tatica: e.tatica, semente, neutro: jc?.neutro });
+      const kj = ([0, 1] as const).find((k) => ehDoJogador(lados[k]));
+      const controle = kj !== undefined && J!.pausa ? controleDaPausa(memoria, lados[kj], kj, (info) => J!.pausa!(info, { dia: j.dia, competicao: j.competicao, adversario: lados[1 - kj], casa: kj === 0 && !jc?.neutro, classico, decisao }, memoria)) : undefined;
+      const r = simularPartida({ mandante: entrada(0), visitante: entrada(1), tatica: e.tatica, semente, neutro: jc?.neutro, ...(controle ? { controle } : {}) });
       const [x, y] = r.estatisticas;
       const titulares = (k: 0 | 1): number => {
         const ids = r.times[k].participantes.slice(0, 11).map((p) => p.j.id);

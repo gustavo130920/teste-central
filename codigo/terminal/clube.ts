@@ -1,10 +1,10 @@
 // Uso: npm run clube -- [SEMENTE] [--auto] [--entradas "1;Fulano;2;;;"] [--anos N]
-// Carreira com o clube do jogador (etapa 4, 8ª fatia, parte 8a; GDD-gestao 1 e 8). Leitura de teclado síncrona.
+// Carreira com o clube do jogador (etapa 4, 8ª fatia, partes 8a e 8b1; GDD-gestao 1 e 8, GDD-motor 7). Leitura de teclado síncrona.
 // Enter em qualquer pergunta = "Avançar" (mantém o que está, ou deixa com a delegação).
 // --auto: Enter em tudo (teste rápido). --entradas: respostas na ordem, separadas por ";" (depois delas, Enter).
 import { readSync } from 'node:fs';
 import type { Jogador, PadraoTime } from '../motor/dados.ts';
-import type { ResultadoPartida } from '../motor/tipos.ts';
+import type { AjustePausa, Lance, ResultadoPartida, Tom } from '../motor/tipos.ts';
 import { narrar } from '../narracao/narrar.ts';
 import type { Carga, Foco } from '../gestao/treino.ts';
 import type { NivelMeta } from '../gestao/diretoria.ts';
@@ -137,6 +137,24 @@ const PADRAO: [keyof PadraoTime, string[]][] = [
   ['ritmo', ['Rápido', 'Normal', 'Lento']], ['saida', ['Curta', 'Mista', 'Direta']],
 ];
 
+// ---------- Partida interativa (8b1) ----------
+const PERIGO = ['gol', 'finalizacao', 'goleiro', 'penalti', 'lesao'];
+const CARTOES = ['Amarelo', 'Segundo amarelo', 'Vermelho direto'];
+const ehPerigo = (l: Lance): boolean => (PERIGO.includes(l.tema) && l.lance !== 'Defesa simples') || CARTOES.includes(l.lance);
+function nomeJogador(id: string | null): string {
+  if (!id) return '';
+  for (const xs of Object.values(m.elencos)) { const j = xs.find((x) => x.id === id); if (j) return j.nome; }
+  return id;
+}
+function mostrarLances(ls: Lance[]): void {
+  for (const l of ls.filter(ehPerigo)) {
+    const min = `${l.minuto}'${l.acrescimo ? `+${l.acrescimo}` : ''}`.padStart(6);
+    const quem = [nomeJogador(l.jogador), l.jogador2 && l.tema === 'gol' ? `assist. ${nomeJogador(l.jogador2)}` : ''].filter(Boolean).join(', ');
+    console.log(`${min} ${nome(l.clube)}: ${l.lance}${quem ? ` (${quem})` : ''}${l.resultado === 'gol' ? ' · GOL' : ''}`);
+  }
+}
+const TONS: Tom[] = ['Cobrar', 'Acalmar', 'Elogiar'];
+
 function telaResultado(): void {
   if (!ultimoDoClube) return;
   const { d, r } = ultimoDoClube;
@@ -147,6 +165,7 @@ function telaResultado(): void {
   if (gols.length) console.log(`  Gols: ${gols.join(', ')}`);
   const [a, b] = r.estatisticas;
   console.log(`  Finalizações ${a.finalizacoes} x ${b.finalizacoes} · no alvo ${a.noAlvo} x ${b.noAlvo} · cartões ${a.amarelos + a.vermelhos} x ${b.amarelos + b.vermelhos}`);
+  if (!delegado.tatica && r.lances.some((l) => l.bloco === 6)) { console.log('  Últimos 15 minutos:'); mostrarLances(r.lances.filter((l) => l.bloco === 6)); }
   const t = r.times[k];
   console.log('  Notas: ' + [...t.participantes].sort((x, y) => y.nota - x.nota).map((e) => `${e.j.nome} ${e.nota.toFixed(1)}`).join(', '));
   for (const l of r.lesoes.filter((x) => x.time === k)) console.log(`  Lesão: ${t.participantes.find((e) => e.j.id === l.jogador)?.j.nome} (${l.gravidade}, ${l.semanas} sem.)`);
@@ -238,6 +257,55 @@ const controle: ControleJogador = {
     console.log('--- 6. Jogar ---');
     return { ...(titulares ? { titulares } : {}), ...(Object.keys(padrao).length ? { padrao } : {}) };
   },
+  pausa(info, jogo) {
+    if (delegado.tatica) return null;
+    if (auto && !fila.length) return null; // teste rápido: o auxiliar decide, como a IA
+    const i = info.lado;
+    const t = info.time;
+    const [a, b] = info.times;
+    mostrarLances(info.lances);
+    console.log(`\n--- ${info.intervalo ? 'INTERVALO' : `Pausa dos ${info.minuto}'`}: ${nome(i === 0 ? clube.id : jogo.adversario)} ${info.placar[0]} x ${info.placar[1]} ${nome(i === 0 ? jogo.adversario : clube.id)} ---`);
+    console.log(`  Finalizações ${a.finalizacoes} x ${b.finalizacoes} · posse ${a.possePct}% x ${b.possePct}% · energia ${a.energiaMedia} x ${b.energiaMedia} · ímpeto ${a.impeto} x ${b.impeto}`);
+    const adv = info.times[1 - i].ajustes;
+    console.log(`  Adversário: ${adv.length ? adv.join(', ') : 'sem leitura das mudanças'}`);
+    for (const x of info.extras) console.log(`  Analista: ${x}`);
+    info.sugestoes.forEach((s, k) => console.log(`  Auxiliar ${k + 1}) ${s}`));
+    const aj: AjustePausa = {};
+    const resumo = (): string => [aj.estilo ? `estilo ${aj.estilo}` : '', ...Object.entries(aj.padrao ?? {}).map(([k, v]) => `${k} ${v}`),
+      ...(aj.trocas ?? []).map(([s, e]) => `${nomeJogador(s)} por ${nomeJogador(e)}`), aj.fala ? `fala ${aj.fala}` : '', ...(aj.sugestoes ?? []).map((k) => `sugestão ${k + 1}`)].filter(Boolean).join(', ') || 'nada';
+    for (;;) {
+      console.log(`  Estilo ${aj.estilo ?? t.estilo.nome} · ${PADRAO.map(([k]) => `${k} ${aj.padrao?.[k] ?? t.padrao[k]}`).join(' · ')} · trocas restantes ${info.trocasRestantes - (aj.trocas?.length ?? 0)} · a aplicar: ${resumo()}`);
+      const v = perguntar(`  s) sugestões  p) instruções do time  e) estilo  t) troca${info.intervalo ? '  f) fala' : ''}  a) auxiliar decide  Enter = seguir:`);
+      if (!v) return aj;
+      if (v === 'a') return null;
+      if (v === 's') {
+        const ns = perguntar('  Números das sugestões (ex.: 1 2):').split(/\s+/).map(Number).filter((n) => n >= 1 && n <= info.sugestoes.length);
+        aj.sugestoes = [...new Set(ns.map((n) => n - 1))];
+      } else if (v === 'p') {
+        for (const [k, ops] of PADRAO) {
+          const x = escolher(`  ${k}: ${lista(ops)} (Enter = ${aj.padrao?.[k] ?? t.padrao[k]}):`, ops.length);
+          if (x !== null) aj.padrao = { ...aj.padrao, [k]: ops[x] };
+        }
+        console.log('  Custo: 1 instrução sem perda; 2 ou mais, eficácia × 0,9 nos próximos 15 minutos.');
+      } else if (v === 'e') {
+        console.log(`  Estilos: ${lista(estilos)}`);
+        const x = escolher(`  Estilo (Enter = ${t.estilo.nome}; troca é radical, perde de 10% a 40% de eficácia por 15 minutos):`, estilos.length);
+        if (x !== null) aj.estilo = estilos[x] === t.estilo.nome ? undefined : estilos[x];
+      } else if (v === 't') {
+        const campo = t.escalados;
+        campo.forEach((e, k) => console.log(`    ${String(k + 1).padStart(2)}) ${e.vaga.padEnd(4)} ${e.j.nome.padEnd(18)} energia ${Math.round(e.energia)}${e.amarelos ? ' · amarelo' : ''}${e.lesao ? ` · lesão ${e.lesao}` : ''}`));
+        t.banco.forEach((j, k) => console.log(`    b${k + 1}) ${j.posicao.padEnd(4)} ${j.nome.padEnd(18)} nota ${j.nota}`));
+        const [s, e] = perguntar('  Quem sai e quem entra (ex.: 9 b2):').split(/\s+/);
+        const sai = campo[Number(s) - 1];
+        const entra = t.banco[Number(e?.replace(/^b/, '')) - 1];
+        if (sai && entra && (aj.trocas?.length ?? 0) < info.trocasRestantes) aj.trocas = [...(aj.trocas ?? []), [sai.j.id, entra.id]];
+        else console.log('  Troca inválida.');
+      } else if (v === 'f' && info.intervalo) {
+        const x = escolher(`  Fala: ${lista(TONS)} (Cobrar: perdendo ou apático · Acalmar: ímpeto negativo ou vantagem curta · Elogiar: jogando bem e na frente):`, 3);
+        aj.fala = x === null ? undefined : TONS[x];
+      }
+    }
+  },
   meta(metas) {
     console.log(`\n=== Ano ${m.ano}: metas da diretoria ===`);
     const niveis = (Object.keys(metas) as NivelMeta[]).filter((n) => metas[n]);
@@ -264,7 +332,7 @@ for (let ano = 1; ano <= anosMax; ano++) {
   console.log('  Campeões: ' + Object.entries(r.campeoes).map(([k, c]) => `${COMP[k] ?? k}: ${nome(c)}`).join(' · '));
   if (tecnico.clubeId !== clube.id) {
     const s = t.memoria.dir.saidas.filter((x) => x.clube === clube.id).pop();
-    console.log(`\n${tecnico.nome} não é mais o técnico do ${clube.nomeCurto} (${s?.motivo ?? 'saída'}). Propostas de outros clubes chegam na 8b. Fim da carreira.`);
+    console.log(`\n${tecnico.nome} não é mais o técnico do ${clube.nomeCurto} (${s?.motivo ?? 'saída'}). Propostas de outros clubes chegam na 8b3. Fim da carreira.`);
     break;
   }
   if (perguntar('\nEnter = próxima temporada; s = sair:') === 's') break;

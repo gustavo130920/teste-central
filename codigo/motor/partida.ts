@@ -3,17 +3,18 @@ import { bonusGol, calcularConfronto, pontosElo } from './confronto.ts';
 import { bonusEnsaiada, chanceBolaChega, chanceDueloAereo, chancePenalti, chancesCartao, escolherBatedor, limiarDividida, melhoresNoAlto } from './bolaparada.ts';
 import { chanceDisputa, chanceGol, lerAtributo, limitar, modTraco, penaFirula, pesoDefeito, valorAcao, valorJogador } from './disputa.ts';
 import { aplicarImpeto, atualizarMods, calcularMod, decairImpeto, gastoBloco, mudarMoral, temQualidade } from './clima.ts';
-import { montarTime, prepararTime, retirarExpulso, retirarLesionado, substituir } from './escalacao.ts';
+import { escolherAsDuas, montarTime, prepararTime, retirarExpulso, retirarLesionado, substituir } from './escalacao.ts';
 import { chanceLesao, chanceLesaoFaltaDura, semanasFora, sortearGravidade } from './lesoes.ts';
 import { chanceForaDePosicao } from './plano.ts';
-import { decidirReacao, escolherTrocas, falaIntervalo } from './pausas.ts';
+import type { Decisao } from './pausas.ts';
+import { atacarBrecha, custoRadical, decidirReacao, escolherTrocas, falaDoJogador, falaIntervalo, mudarDegrau, reverterEixo, tonsCertos } from './pausas.ts';
 import { GDD, PROVISORIO, RESPALDO } from './parametros.ts';
 import { NOTA, fecharNotas, pontuarLance } from './notas.ts';
 import type { Acao, AcaoDisputa, TipoChute } from './parametros.ts';
-import { criarRng } from './rng.ts';
+import { criarRng, semearDeTexto } from './rng.ts';
 import type { Rng } from './rng.ts';
 import type { Tatica } from './dados.ts';
-import type { EntradaPartida, Escalado, EstatInicio, EstatTime, FinsCadeia, Lance, RegistroLesao, RelatorioPausa, RelatorioTime, ResultadoPartida, TimeEmCampo } from './tipos.ts';
+import type { AjustePausa, ControlePausa, EntradaPartida, Escalado, EstatInicio, EstatTime, FinsCadeia, Lance, RegistroLesao, RelatorioPausa, RelatorioTime, ResultadoPartida, TimeEmCampo } from './tipos.ts';
 import { TOTAL_ZONAS, codigoZona, corredor, distancia, espelhar, faixa, zona as zonaDe } from './zonas.ts';
 
 type TipoInicio = 'saida' | 'recuperacao' | 'contra' | 'reinicio' | 'continuacao' | 'escanteio' | 'faltaPerigosa';
@@ -41,6 +42,10 @@ interface Estado {
   lesoes: RegistroLesao[];
   porInicio: Record<string, EstatInicio>;
   avisos: [string[], string[]];
+  semente: number;
+  controle?: ControlePausa;
+  /** Ajustes da pausa anterior: o do adversário só aparece no relatório seguinte (GDD 7). */
+  ultimaPausa: [string[], string[]];
 }
 
 const novaEstat = (): EstatTime => ({
@@ -776,6 +781,7 @@ function vaiaDaTorcida(st: Estado, i: 0 | 1): void {
 function fimDeBloco(st: Estado, b: number, inicioImpeto: [number, number]): void {
   for (const i of [0, 1] as const) {
     st.t[i].ajusteFraco = false;
+    st.t[i].custoAjuste = 1;
     for (const e of st.t[i].escalados) e.energia = Math.max(0, e.energia - gastoBloco(e, st.t[i]));
     fogoPorContaPropria(st, i);
     tecnicoPerdeACabeca(st, i);
@@ -797,13 +803,147 @@ function relatorio(st: Estado, i: 0 | 1, ajustes: string[]): RelatorioTime {
   };
 }
 
+interface Sugestao { texto: string; decisao?: Decisao; ajuste?: AjustePausa }
+
+/** Sugestões do auxiliar (GDD 7): de 1 a 3 pela leitura; a certa sai com `leitura × 5%`, senão o ajuste padrão de linha (PROVISORIO). */
+function sugerir(st: Estado, i: 0 | 1, minuto: number, intervalo: boolean, leitura: number, rp: Rng): Sugestao[] {
+  const t = st.t[i];
+  const op = st.t[outro(i)];
+  const dif = difPlacar(st, i);
+  const n = leitura <= 7 ? 1 : leitura <= 13 ? 2 : 3;
+  const acerta = (): boolean => rp.pct(leitura * 5);
+  const out: Sugestao[] = [];
+  const certa = reverterEixo(t, op) ?? atacarBrecha(t, op, st.tatica);
+  const d = certa && acerta() ? certa : mudarDegrau(t, 'linha', dif < 0 ? 1 : -1);
+  if (d) out.push({ texto: d.texto, decisao: d });
+  for (const sai of escolherTrocas(t, minuto)) {
+    if (out.length >= n || t.trocas >= GDD.substituicoes) break;
+    out.push({ texto: `trocar ${sai.j.nome} (energia ${Math.round(sai.energia)}) pelo melhor reserva`, ajuste: { trocas: [[sai.j.id, '']] } });
+  }
+  if (intervalo && out.length < n) {
+    const certos = tonsCertos(dif, st.impeto[i]);
+    const tom = certos.length && acerta() ? certos[0] : rp.um(['Cobrar', 'Acalmar', 'Elogiar'] as const);
+    out.push({ texto: `fala: ${tom}`, ajuste: { fala: tom } });
+  }
+  return out.slice(0, n);
+}
+
+/** Itens do analista pela Profundidade; cada um erra com `(20 − Precisão) × 2,5%`; com Precisão abaixo de 10, faixas (GDD 7). */
+function extrasDoAnalista(st: Estado, i: 0 | 1, b: number, an: ControlePausa['analista'], rp: Rng): string[] {
+  const out: string[] = [];
+  const o = outro(i);
+  const erra = (): boolean => rp.pct((20 - an.precisao) * 2.5);
+  const zonaQualquer = (): string => codigoZona(rp.int(0, TOTAL_ZONAS - 1));
+  const lances = st.lances.filter((l) => l.bloco === b);
+  const moda = (xs: (string | null)[]): string | null => {
+    const c = new Map<string, number>();
+    for (const x of xs) if (x) c.set(x, (c.get(x) ?? 0) + 1);
+    return [...c].sort((a, b2) => b2[1] - a[1] || a[0].localeCompare(b2[0]))[0]?.[0] ?? null;
+  };
+  if (an.profundidade >= 8) {
+    const perdas = moda(lances.filter((l) => (l.lance === 'Perda de bola' && l.time === i) || ((l.lance === 'Desarme' || l.lance === 'Pressão') && l.time === o)).map((l) => l.zonaDestino ?? l.zonaOrigem));
+    if (perdas) out.push(`Mais bolas perdidas em ${erra() ? zonaQualquer() : perdas}`);
+    const chances = moda(lances.filter((l) => (l.tema === 'finalizacao' || l.tema === 'gol') && l.time === o).map((l) => l.zonaOrigem));
+    if (chances) out.push(`Mais chances sofridas saindo de ${erra() ? zonaQualquer() : chances} (no ataque deles)`);
+  }
+  if (an.profundidade >= 14) {
+    const [c, d] = [st.t[i].confronto, st.t[o].confronto];
+    const nomes = { pressaoSaida: 'pressão x saída', velocidadeCostas: 'velocidade x costas', criacaoBloco: 'criação x bloco' } as const;
+    const eixos = (Object.keys(nomes) as (keyof typeof nomes)[]).map((k) => {
+      const v = Math.round((c[k] - d[k]) * (erra() ? -1 : 1));
+      return `${nomes[k]} ${an.precisao < 10 ? `${v - 2} a ${v + 2}` : (v > 0 ? '+' : '') + v}`;
+    });
+    out.push(`Eixos (sua vantagem): ${eixos.join(' · ')}`);
+    let alvo = -1;
+    let maior = 0;
+    for (let z = 0; z < TOTAL_ZONAS; z++) {
+      const v = st.t[o].efeitos.brechaSem[z] + st.t[o].efeitos.brechaTransicao[z];
+      if (v > maior) { maior = v; alvo = z; }
+    }
+    if (alvo >= 0) out.push(`Maior brecha deles: ${erra() ? zonaQualquer() : codigoZona(espelhar(alvo))}`);
+    const ids = new Map<string, number>();
+    for (const l of lances) if (l.time === o && l.jogador && (l.tema === 'gol' || l.tema === 'finalizacao' || ['Drible', 'Passe decisivo', 'Cruzamento', 'Desarme'].includes(l.lance))) ids.set(l.jogador, (ids.get(l.jogador) ?? 0) + 1);
+    const top = [...ids].sort((a, b2) => b2[1] - a[1])[0]?.[0];
+    const nomeDe = (id: string): string => st.t[o].participantes.find((e) => e.j.id === id)?.j.nome ?? id;
+    if (top) out.push(`Destaque deles: ${erra() ? rp.um(st.t[o].escalados).j.nome : nomeDe(top)}`);
+  }
+  return out;
+}
+
+/** Aplica o que o jogador decidiu e cobra o custo do ajuste no bloco seguinte (GDD 7). */
+function aplicarDoJogador(st: Estado, i: 0 | 1, intervalo: boolean, aj: AjustePausa, sug: Sugestao[], feitos: string[]): void {
+  const t = st.t[i];
+  const antes = { ...t.padrao };
+  const trocas: [string, string][] = [...(aj.trocas ?? [])];
+  let fala = aj.fala;
+  for (const k of aj.sugestoes ?? []) {
+    const s = sug[k];
+    if (!s) continue;
+    if (s.decisao) s.decisao.aplicar();
+    if (s.ajuste?.trocas) trocas.push(...s.ajuste.trocas);
+    if (s.ajuste?.fala && !fala) fala = s.ajuste.fala;
+  }
+  const radical = !!aj.estilo && aj.estilo !== t.estilo.nome && st.tatica.estilos.some((e) => e.nome === aj.estilo);
+  if (radical) {
+    t.estilo = st.tatica.estilos.find((e) => e.nome === aj.estilo)!;
+    t.padrao = { ...t.estilo.padrao };
+    feitos.push(`estilo ${t.estilo.nome}`);
+  }
+  if (aj.padrao) t.padrao = { ...t.padrao, ...aj.padrao };
+  if (radical) for (const e of t.escalados) escolherAsDuas(e, t, st.tatica);
+  const ref = radical ? t.estilo.padrao : antes;
+  const mudadas = (Object.keys(t.padrao) as (keyof typeof t.padrao)[]).filter((k) => t.padrao[k] !== ref[k]);
+  for (const k of mudadas) feitos.push(`${k} ${t.padrao[k]}`);
+  // Instrução individual vinda de sugestão do auxiliar: ajuste leve.
+  for (const k of aj.sugestoes ?? []) if (sug[k]?.decisao?.texto.includes(":")) feitos.push(sug[k].decisao!.texto);
+  t.custoAjuste = radical ? custoRadical(t) : mudadas.length >= 2 ? 0.9 : 1;
+  if ((radical || mudadas.length) && t.apoio.respaldo < RESPALDO.fraco) t.ajusteFraco = true;
+  for (const [saiId, entraId] of trocas) {
+    if (t.trocas >= GDD.substituicoes) break;
+    const sai = t.escalados.find((e) => e.j.id === saiId);
+    if (!sai) continue;
+    const goleiro = sai === t.goleiro;
+    const entra = substituir(t, sai, st.tatica, st.rng, st.classico, entraId || undefined);
+    if (!entra) continue;
+    if (goleiro) t.goleiro = entra;
+    feitos.push(`sai ${sai.j.nome} (${Math.round(sai.energia)}), entra ${entra.j.nome}`);
+  }
+  if (intervalo && fala) {
+    const delta = falaDoJogador(t, fala, difPlacar(st, i), st.impeto[i]);
+    if (delta) aplicarImpeto(st.impeto, t, delta);
+    feitos.push(`fala: ${fala}${delta < 0 ? ' (tom errado)' : delta === 0 ? ' (sem efeito)' : ''}`);
+  }
+}
+
 /** Os dois técnicos decidem sobre o mesmo cenário; só depois as mudanças entram (GDD 7). */
 function pausa(st: Estado, b: number): RelatorioPausa {
   const minuto = b * 15;
+  const intervalo = b === GDD.blocoIntervalo;
   const ajustes: [string[], string[]] = [st.avisos[0], st.avisos[1]];
   st.avisos = [[], []];
-  const decisoes = ([0, 1] as const).map((i) => decidirReacao(st.t[i], st.t[outro(i)], difPlacar(st, i), minuto, st.tatica, st.rng));
+  // Clube do jogador: relatório, sugestões e escolha antes de qualquer mudança; null = o auxiliar decide (IA).
+  const ctl = st.controle && !st.t[st.controle.lado].tecnicoExpulso ? st.controle : undefined;
+  let doJogador: { aj: AjustePausa; sug: Sugestao[] } | null = null;
+  if (ctl) {
+    const i = ctl.lado;
+    const o = outro(i);
+    const rp = criarRng(semearDeTexto(`${st.semente}-pausa-${b}`));
+    const sug = sugerir(st, i, minuto, intervalo, ctl.leitura, rp);
+    const times: [RelatorioTime, RelatorioTime] = [relatorio(st, 0, [...ajustes[0]]), relatorio(st, 1, [...ajustes[1]])];
+    times[o].ajustes = rp.pct(ctl.analista.aoVivo * 5) ? [...st.ultimaPausa[o], ...ajustes[o]] : [];
+    const aj = ctl.pausa({
+      minuto, intervalo, lado: i, placar: [st.placar[0], st.placar[1]], times, extras: extrasDoAnalista(st, i, b, ctl.analista, rp),
+      sugestoes: sug.map((s) => s.texto), lances: st.lances.filter((l) => l.bloco === b), time: st.t[i], trocasRestantes: GDD.substituicoes - st.t[i].trocas,
+    });
+    if (aj) doJogador = { aj, sug };
+  }
+  const doLado = (i: 0 | 1): boolean => !!doJogador && ctl!.lado === i;
+  const decisoes = ([0, 1] as const).map((i) => (doLado(i) ? null : decidirReacao(st.t[i], st.t[outro(i)], difPlacar(st, i), minuto, st.tatica, st.rng)));
   for (const i of [0, 1] as const) {
+    if (doLado(i)) {
+      aplicarDoJogador(st, i, intervalo, doJogador!.aj, doJogador!.sug, ajustes[i]);
+      continue;
+    }
     const d = decisoes[i];
     if (d) {
       d.aplicar();
@@ -817,7 +957,7 @@ function pausa(st: Estado, b: number): RelatorioPausa {
       const entra = substituir(t, sai, st.tatica, st.rng, st.classico);
       if (entra) ajustes[i].push(`sai ${sai.j.nome} (${Math.round(sai.energia)}), entra ${entra.j.nome}`);
     }
-    if (b === GDD.blocoIntervalo) {
+    if (intervalo) {
       const fala = falaIntervalo(t, difPlacar(st, i), st.impeto[i], st.rng);
       if (fala) {
         aplicarImpeto(st.impeto, t, fala.delta);
@@ -825,6 +965,7 @@ function pausa(st: Estado, b: number): RelatorioPausa {
       }
     }
   }
+  st.ultimaPausa = [[...ajustes[0]], [...ajustes[1]]];
   return { minuto, placar: [st.placar[0], st.placar[1]], times: [relatorio(st, 0, ajustes[0]), relatorio(st, 1, ajustes[1])] };
 }
 
@@ -855,6 +996,7 @@ export function simularPartida(ent: EntradaPartida): ResultadoPartida {
     rng, t, tatica: ent.tatica, impeto: [ent.mandante.impeto ?? 0, ent.visitante.impeto ?? 0], placar: [0, 0], est: [novaEstat(), novaEstat()],
     fins: { finalizacao: 0, perda: 0, falta: 0, fora: 0, limite: 0 },
     lances: [], classico, bloco: 1, cadeia: 0, posse: 0, minuto: 0, acrescimo: 0, golsBloco: 0, faltasBloco: 0, lesoesBloco: 0, lesoes: [], porInicio: {}, avisos: [[], []],
+    semente: ent.semente, controle: ent.controle, ultimaPausa: [[], []],
   };
   const cadeiasPorBloco: number[] = [];
   const pausas: RelatorioPausa[] = [];

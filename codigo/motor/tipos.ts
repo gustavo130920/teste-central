@@ -99,6 +99,8 @@ export interface TimeEmCampo {
   moral?: Record<string, number>;
   /** Respaldo de 15 a 39: o bloco depois de uma pausa com ajuste rende × 0,9 (GDD 7). */
   ajusteFraco: boolean;
+  /** Custo do ajuste da pausa no bloco seguinte (GDD 7): 1 leve, 0,9 médio, radical pelo Ajuste nas Pausas. */
+  custoAjuste: number;
   /** Fator casa vindo da Gestão (Humor e ocupação, GDD-gestao 9); sem ele, o PROVISORIO pela torcida. */
   casa?: number;
   /** Torcida hostil (Humor até 25): vaia em casa no fim do bloco com o time perdendo (GDD-gestao 9). */
@@ -156,6 +158,34 @@ export interface EntradaPartida {
   semente: number;
   /** Campo neutro (final da Champions, Mundial): ninguém joga em casa. */
   neutro?: boolean;
+  /** Clube do jogador (8b1): decide nas pausas no lugar do auxiliar; resposta null = o auxiliar decide (IA). */
+  controle?: ControlePausa;
+}
+
+export type Tom = 'Cobrar' | 'Acalmar' | 'Elogiar';
+/** O que o jogador muda na pausa. `padrao` traz os valores novos; `sugestoes`, os índices aplicados. */
+export interface AjustePausa { padrao?: Partial<PadraoTime>; estilo?: string; trocas?: [string, string][]; fala?: Tom; sugestoes?: number[] }
+export interface InfoPausa {
+  minuto: number;
+  intervalo: boolean;
+  lado: 0 | 1;
+  placar: [number, number];
+  /** Relatório básico; os ajustes do adversário só com a leitura ao vivo do analista. */
+  times: [RelatorioTime, RelatorioTime];
+  /** Itens do analista pela Profundidade, sujeitos à Precisão. */
+  extras: string[];
+  sugestoes: string[];
+  /** Lances do bloco que acabou. */
+  lances: Lance[];
+  time: TimeEmCampo;
+  trocasRestantes: number;
+}
+export interface ControlePausa {
+  lado: 0 | 1;
+  analista: { profundidade: number; precisao: number; aoVivo: number };
+  /** Média entre a Leitura de jogo do auxiliar e a Leitura Tática do técnico. */
+  leitura: number;
+  pausa(info: InfoPausa): AjustePausa | null;
 }
 
 export interface ContextoLance {

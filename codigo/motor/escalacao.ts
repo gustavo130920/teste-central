@@ -106,7 +106,7 @@ export function montarTime(indice: 0 | 1, ent: EntradaTime, tatica: Tatica, rng:
   if (!goleiro) throw new Error(`${ent.clube.id}: sem goleiro`);
   const t: TimeEmCampo = {
     indice, clube: ent.clube, tecnico: ent.tecnico, estilo, padrao, notas: notasEfetivas(estilo, padrao), escalados, goleiro,
-    participantes: [...escalados], banco: escolherBanco(ent.elenco, onze, com), trocas: 0, tecnicoExpulso: false, emCasa: indice === 0, condicao: ent.condicao, moral: ent.moral, ajusteFraco: false, casa: ent.fatorCasa, vaia: ent.vaia,
+    participantes: [...escalados], banco: escolherBanco(ent.elenco, onze, com), trocas: 0, tecnicoExpulso: false, emCasa: indice === 0, condicao: ent.condicao, moral: ent.moral, ajusteFraco: false, custoAjuste: 1, casa: ent.fatorCasa, vaia: ent.vaia,
     presencaCom: [], presencaContra: [], efeitos: calcularEfeitos([], [], padrao),
     confronto: { pressaoSaida: 0, velocidadeCostas: 0, criacaoBloco: 0, viabilidade: 0 },
     apoio: { ...APOIO_NEUTRO, ...ent.apoio },
@@ -130,7 +130,7 @@ function novoEscalado(j: Jogador, time: 0 | 1, vaga: Posicao, zonaCom: number, z
 
 const contarZagueiros = (t: TimeEmCampo): number => t.escalados.filter((e) => e.vaga === 'ZAG').length;
 
-function escolherAsDuas(e: Escalado, t: TimeEmCampo, tatica: Tatica): void {
+export function escolherAsDuas(e: Escalado, t: TimeEmCampo, tatica: Tatica): void {
   e.instrCom = escolherInstrucao(e, 'Com', tatica.instrucoes, t.estilo.nome, t.padrao, contarZagueiros(t));
   e.instrSem = escolherInstrucao(e, 'Sem', tatica.instrucoes, t.estilo.nome, t.padrao, contarZagueiros(t));
 }
@@ -147,7 +147,7 @@ export function prepararTime(t: TimeEmCampo, tatica: Tatica): void {
     // Ajuste de linha na pausa pode invalidar uma instrução que exige Linha Alta.
     if (e.instrCom && !exigenciaCumprida(e.instrCom, t.padrao, zagueiros)) e.instrCom = escolherInstrucao(e, 'Com', tatica.instrucoes, t.estilo.nome, t.padrao, zagueiros);
     if (e.instrSem && !exigenciaCumprida(e.instrSem, t.padrao, zagueiros)) e.instrSem = escolherInstrucao(e, 'Sem', tatica.instrucoes, t.estilo.nome, t.padrao, zagueiros);
-    const fator = t.apoio.entrosamento * (t.ajusteFraco ? RESPALDO.fator : 1);
+    const fator = t.apoio.entrosamento * (t.ajusteFraco ? RESPALDO.fator : 1) * t.custoAjuste;
     e.efCom = e.instrCom ? eficaciaFinal(e, e.instrCom, t.estilo.nome, fator) : 0;
     e.efSem = e.instrSem ? eficaciaFinal(e, e.instrSem, t.estilo.nome, fator) : 0;
     montarPesos(e, goleiro);
@@ -163,10 +163,10 @@ export function prepararTime(t: TimeEmCampo, tatica: Tatica): void {
 }
 
 /** Troca na mesma vaga pelo melhor reserva. Devolve quem entrou, ou null sem reserva possível. */
-export function substituir(t: TimeEmCampo, sai: Escalado, tatica: Tatica, rng: Rng, classico: boolean): Escalado | null {
-  let melhor: Jogador | null = null;
+export function substituir(t: TimeEmCampo, sai: Escalado, tatica: Tatica, rng: Rng, classico: boolean, escolhido?: string): Escalado | null {
+  let melhor: Jogador | null = escolhido ? t.banco.find((j) => j.id === escolhido) ?? null : null;
   let nota = -Infinity;
-  for (const j of t.banco) {
+  if (!escolhido) for (const j of t.banco) {
     const n = notaNaVaga(j, sai.vaga);
     if (n !== null && n > nota) { melhor = j; nota = n; }
   }

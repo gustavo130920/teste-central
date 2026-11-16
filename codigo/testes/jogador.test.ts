@@ -40,7 +40,7 @@ test('jogador: delegação total dá os mesmos jogos da IA', () => {
   assert.equal(tec.reputacao, b.m.clubes.find((c) => c.id === CLUBE)!.reputacao);
   let chamadas = 0;
   const nulo = () => { chamadas += 1; return null; };
-  b.m.jogador = { clube: CLUBE, evento: nulo, coletiva: nulo, treino: nulo, escalar: nulo, meta: nulo, aoCiclo: () => { chamadas += 1; } };
+  b.m.jogador = { clube: CLUBE, evento: nulo, coletiva: nulo, treino: nulo, escalar: nulo, meta: nulo, pausa: nulo, aoCiclo: () => { chamadas += 1; } };
   const jb = jogarAno(b.m, 5);
   assert.ok(chamadas > 100);
   assert.equal(jb.jogos.length, ja.jogos.length);

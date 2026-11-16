@@ -5,7 +5,7 @@ import { limitar } from './disputa.ts';
 import { PROVISORIO } from './parametros.ts';
 import { eficaciaFinal, opcoesInstrucao, zonasDaEtiqueta } from './plano.ts';
 import type { Rng } from './rng.ts';
-import type { Escalado, TimeEmCampo } from './tipos.ts';
+import type { Escalado, TimeEmCampo, Tom } from './tipos.ts';
 import { TOTAL_ZONAS, codigoZona, espelhar } from './zonas.ts';
 
 export interface Decisao { texto: string; aplicar: () => void }
@@ -26,7 +26,7 @@ export function mudarDegrau(t: TimeEmCampo, k: keyof typeof DEGRAUS, delta: numb
 const atributoTecnico = (t: TimeEmCampo, a: string): number => (t.tecnicoExpulso ? PROVISORIO.atributoTecnicoSemDado : t.tecnico.trabalho?.[a] ?? PROVISORIO.atributoTecnicoSemDado);
 
 /** Eixo em que o adversário mais leva vantagem sobre este time (GDD 5). */
-function reverterEixo(t: TimeEmCampo, op: TimeEmCampo): Decisao | null {
+export function reverterEixo(t: TimeEmCampo, op: TimeEmCampo): Decisao | null {
   const eixos: [number, () => Decisao | null][] = [
     [op.confronto.pressaoSaida, () => mudarDegrau(t, 'saida', 1)],
     [op.confronto.velocidadeCostas, () => mudarDegrau(t, 'linha', -1)],
@@ -42,7 +42,7 @@ function reverterEixo(t: TimeEmCampo, op: TimeEmCampo): Decisao | null {
 }
 
 /** Troca a instrução de quem pode atacar a maior brecha do adversário. */
-function atacarBrecha(t: TimeEmCampo, op: TimeEmCampo, tatica: Tatica): Decisao | null {
+export function atacarBrecha(t: TimeEmCampo, op: TimeEmCampo, tatica: Tatica): Decisao | null {
   let alvo = -1;
   let maior = 0;
   for (let z = 0; z < TOTAL_ZONAS; z++) {
@@ -97,3 +97,22 @@ export function falaIntervalo(t: TimeEmCampo, dif: number, impeto: number, rng: 
   const mot = atributoTecnico(t, 'Motivação');
   return rng.pct(mot * 5) ? { delta: limitar(5 + mot * 0.75, 6, 20), tom } : { delta: PROVISORIO.falaErrada, tom: 'tom errado' };
 }
+
+/** Tons que acertam na situação (GDD 7); vazio = situação neutra. Apático = ímpeto no limite da narração (PROVISORIO). */
+export function tonsCertos(dif: number, impeto: number): Tom[] {
+  const r: Tom[] = [];
+  if (dif < 0 || impeto <= PROVISORIO.impetoNarraBaixo) r.push('Cobrar');
+  if (impeto < 0 || dif === 1) r.push('Acalmar');
+  if (dif > 0) r.push('Elogiar');
+  return r;
+}
+
+/** Fala do jogador no intervalo: ímpeto pelo tom escolhido (GDD 7). */
+export function falaDoJogador(t: TimeEmCampo, tom: Tom, dif: number, impeto: number): number {
+  const certos = tonsCertos(dif, impeto);
+  if (!certos.length) return 0;
+  return certos.includes(tom) ? limitar(5 + atributoTecnico(t, 'Motivação') * 0.75, 6, 20) : PROVISORIO.falaErrada;
+}
+
+/** Eficácia no bloco seguinte a uma troca de estilo: perde 25% − (Ajuste nas Pausas − 10) × 1,5%, de 10% a 40% (GDD 7). */
+export const custoRadical = (t: TimeEmCampo): number => 1 - limitar(25 - (atributoTecnico(t, 'Ajuste nas Pausas') - 10) * 1.5, 10, 40) / 100;

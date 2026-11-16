@@ -2,7 +2,8 @@
 // gancho síncrono que a temporada chama em cada ciclo. Toda resposta `null` (ou gancho ausente) é "delegado":
 // a temporada faz o que a IA faria, sem gastar sorteio a mais.
 import type { Clube, PadraoTime, Tatica, Tecnico } from '../motor/dados.ts';
-import type { ResultadoPartida } from '../motor/tipos.ts';
+import type { AjustePausa, ControlePausa, InfoPausa, ResultadoPartida } from '../motor/tipos.ts';
+import { efetivo } from '../gestao/comissao.ts';
 import type { Carga, Ciclo, Foco } from '../gestao/treino.ts';
 import { chaveTatica } from '../gestao/treino.ts';
 import type { Meta, NivelMeta } from '../gestao/diretoria.ts';
@@ -128,6 +129,20 @@ export interface ControleJogador {
   treino?(ciclo: Ciclo, ia: { carga: Carga; foco: Foco }, mem: Memoria): { carga: Carga; foco: Foco } | null;
   /** Próximo jogo (tela 5): titulares e ajustes do padrão; null deixa com o auxiliar (IA e adaptação). */
   escalar?(p: PedidoEscalacao, mem: Memoria): { titulares?: string[]; padrao?: Partial<PadraoTime> } | null;
+  /** Pausa da partida (8b1): o que mudar; null deixa com o auxiliar (IA). */
+  pausa?(info: InfoPausa, jogo: InfoJogo, mem: Memoria): AjustePausa | null;
   /** Nível da meta no início do ano; null deixa a diretoria escolher pela Ambição. */
   meta?(metas: Record<NivelMeta, Meta | null>, mem: Memoria): NivelMeta | null;
+}
+
+/** Analista e leitura do auxiliar com o técnico para as pausas do clube do jogador (GDD 7). */
+export function controleDaPausa(mem: Memoria, clube: string, lado: 0 | 1, pausa: ControlePausa['pausa']): ControlePausa {
+  const g = mem.gestao.get(clube);
+  const at = (cargo: Parameters<typeof efetivo>[1], sigla: string): number => (g ? efetivo(g.comissao, cargo, sigla) : 10);
+  const lt = g?.tecnico.trabalho?.['Leitura Tática'] ?? 10;
+  return {
+    lado, pausa,
+    analista: { profundidade: at('Analista', 'Prof'), precisao: at('Analista', 'Prec'), aoVivo: at('Analista', 'Vivo') },
+    leitura: (at('Auxiliar', 'Lei') + lt) / 2,
+  };
 }
