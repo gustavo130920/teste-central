@@ -81,6 +81,12 @@ export const MERCADO = {
   renovar: { semanas: 52, pot: 1, veterano: 33, rotacao: 0 },
   /** Decisão do Gustavo (13/11/2026; PROVISORIO): empresta jovens até 21 com menos de 10% dos minutos; o destino paga 50% do salário. */
   emprestimo: { idade: 21, minutos: 0.1, salario: 0.5 },
+  /**
+   * 8b2, mercado manual do clube do jogador (Gustavo, 15/11/2026; PROVISORIO): transferível recebe proposta com 35% por
+   * semana na janela, de 80% a 110% do Valor, de um clube da IA que compra e onde ele seria titular; luvas +3 a cada 10% do
+   * salário anual, até 50% (Mercenário pede × 1,5: cada passo vale 15%); até 10 observados; 13 salários no ano.
+   */
+  manual: { transferivel: { chance: 35, oferta: [0.8, 1.1] as [number, number] }, luvas: { passo: 0.1, chance: 3, max: 0.5, mercenario: 1.5 }, observados: 10, meses: 13 },
   /** PROVISORIO: compra só quem melhora o titular mais fraco da posição em 1 ponto ou mais. */
   melhora: 1,
   /** GDD-gestao 11, Europa: tentativas por janela, chance de virar proposta, alvo e oferta. `jovem`: Pot do jovem gerado = média do elenco + 0 (2 → 0 em 15/11/2026: com o equilíbrio de posições eles jogavam e viravam craques). */
@@ -177,6 +183,8 @@ export function estimar(clube: string, j: Jogador, k: Conhecimento | undefined, 
 const grupo = (j: Jogador): string => grupoDaPosicao(j.posicao);
 
 /** Papel no elenco: titular (melhores do grupo), reserva (fora dos 18 melhores) ou rotação. */
+export type Papel = 'titular' | 'rotacao' | 'reserva';
+
 export function papelNoElenco(elenco: Jogador[], j: Jogador, nota: (x: Jogador) => number = (x) => x.nota): 'titular' | 'rotacao' | 'reserva' {
   const g = grupo(j);
   const doGrupo = elenco.filter((x) => grupo(x) === g).sort((a, b) => nota(b) - nota(a));
@@ -258,6 +266,15 @@ export interface AjustesJogador {
   libertadores: boolean;
   memoria: number;
   renovacao?: { leal: boolean; parceiro: boolean };
+  /** Chance das luvas (8b2), de `chanceDasLuvas`. */
+  luvas?: number;
+}
+
+/** Luvas (GDD-gestao 6): +3 a cada 10% do salário anual, até 50%; Mercenário pede × 1,5. */
+export function chanceDasLuvas(luvas: number, mercenario: boolean): number {
+  const L = MERCADO.manual.luvas;
+  const passo = L.passo * (mercenario ? L.mercenario : 1);
+  return Math.floor(Math.min(L.max, Math.max(0, luvas)) / passo + 1e-9) * L.chance;
 }
 export function chanceDoJogador(oferta: number, pedido: number, a: AjustesJogador): number {
   const J = MERCADO.jogador;
@@ -265,6 +282,7 @@ export function chanceDoJogador(oferta: number, pedido: number, a: AjustesJogado
   if (a.libertadores && a.ambicao >= J.libertadores.ambicao) aj += J.libertadores.chance;
   if (a.renovacao?.leal) aj += J.leal;
   if (a.renovacao?.parceiro) aj += J.parceiro;
+  aj += a.luvas ?? 0;
   return limitar(J.base + J.fator * (oferta / pedido - 1) + aj, J.min, J.max);
 }
 

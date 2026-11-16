@@ -11,8 +11,11 @@ import type { ModeloEvento } from '../gestao/eventos.ts';
 import type { Desfalques, Memoria } from './memoria.ts';
 import type { JogoDisputado } from './temporada.ts';
 import type { Jogador } from '../motor/dados.ts';
+import type { InfoMercado } from './mercadoJogador.ts';
+import type { PropostaTecnico } from './diretoria.ts';
+import type { Avaliacao } from '../gestao/diretoria.ts';
 
-/** Áreas de delegação (GDD-gestao 8). Na 8a, compra e venda, comercial e base seguem sempre com a IA (manual na 8b). */
+/** Áreas de delegação (GDD-gestao 8). Compra e venda manual desde a 8b2; comercial e base seguem com a IA. */
 export type Area = 'tatica' | 'treino' | 'imprensa' | 'mercado' | 'comercial' | 'base';
 export const AREAS: Record<Area, string> = {
   tatica: 'Tática e pausas', treino: 'Treino', imprensa: 'Imprensa', mercado: 'Compra e venda', comercial: 'Comercial, ingressos e sócio', base: 'Base',
@@ -131,6 +134,12 @@ export interface ControleJogador {
   escalar?(p: PedidoEscalacao, mem: Memoria): { titulares?: string[]; padrao?: Partial<PadraoTime> } | null;
   /** Pausa da partida (8b1): o que mudar; null deixa com o auxiliar (IA). */
   pausa?(info: InfoPausa, jogo: InfoJogo, mem: Memoria): AjustePausa | null;
+  /** Mercado do ciclo (8b2): o jogador age pelas funções de `mercadoJogador.ts`; null = delegado (a IA cuida do clube). */
+  mercado?(info: InfoMercado, mem: Memoria): true | null;
+  /** 8b3: proposta de emprego ao técnico; true aceita. null: aceita se livre, recusa se empregado. Sem o gancho, não há propostas. */
+  proposta?(p: PropostaTecnico, mem: Memoria): boolean | null;
+  /** 8b3: renovação oferecida na virada: anos (1 a 3), 0 recusa e fica livre; null aceita a duração sorteada (`anos`). */
+  renovacao?(p: { clube: string; anos: number; confianca: number; avaliacao: Avaliacao }, mem: Memoria): number | null;
   /** Nível da meta no início do ano; null deixa a diretoria escolher pela Ambição. */
   meta?(metas: Record<NivelMeta, Meta | null>, mem: Memoria): NivelMeta | null;
 }

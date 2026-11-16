@@ -117,7 +117,7 @@ export function criarMundo(base: BaseMundo): Mundo {
   };
 }
 
-function entradas(m: Mundo): Record<string, EntradaTime> {
+export function entradas(m: Mundo): Record<string, EntradaTime> {
   const ids = [...Object.values(m.clubesPorLiga).flat(), ...m.europeus];
   return Object.fromEntries(ids.map((id) => {
     const clube = m.clubes.find((c) => c.id === id)!;
@@ -221,7 +221,7 @@ export function virar(m: Mundo, t: Temporada): Resumo {
   }
   // 2. Metas, investidor, eleição e contrato do técnico (6ª fatia; depois das finanças, que guardam o retrato do ano).
   if (m.memoria?.diretoria.size) {
-    viradaDiretoria(m.memoria, { ano: m.ano, dia: v.diasNoAno, tecnicos: m.tecnicos, entradas: entradas(m), tatica: m.tatica, clubesPorLiga: m.clubesPorLiga }, {
+    viradaDiretoria(m.memoria, { ano: m.ano, dia: v.diasNoAno, tecnicos: m.tecnicos, entradas: entradas(m), tatica: m.tatica, clubesPorLiga: m.clubesPorLiga, jogador: m.jogador }, {
       tabelas: t.tabelas, campeoes, rebaixados, copas: fasesDasCopas(t.jogos, (id) => t.copas.find((c) => c.id === id)?.campeao() ?? null),
       rng: criarRng(semearDeTexto(`${m.semente}-diretoria-${m.ano}`)),
     });

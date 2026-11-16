@@ -15,6 +15,10 @@ import type { Copa } from './copas.ts';
 import type { Memoria } from './memoria.ts';
 import { trocarTecnico } from './pessoas.ts';
 import type { ControleJogador } from './jogador.ts';
+import { confiancaInicial } from './jogador.ts';
+import { desligarManual } from './mercadoJogador.ts';
+import { incluirNaImprensa } from './eventos.ts';
+import { janelaDaSemana, semanaDoDia } from '../gestao/mercado.ts';
 
 export interface EstadoDiretoria {
   ficha: FichaDiretoria;
@@ -38,7 +42,7 @@ export interface EstadoDiretoria {
 
 export interface ContagemDiretoria {
   /** Demissões e saídas: ano, clube, motivo e anos no cargo. */
-  saidas: { ano: number; clube: string; motivo: 'demissão' | 'contrato' | 'novo dono'; anos: number }[];
+  saidas: { ano: number; clube: string; motivo: Motivo; anos: number }[];
   renovacoes: number;
   metas: Record<Avaliacao, number>;
   niveis: Record<NivelMeta, number>;
@@ -74,6 +78,9 @@ export interface CtxDiretoria {
 }
 
 const DIAS_ANO = 364;
+
+/** Saída do técnico; 'proposta' = o técnico do jogador assumiu ou saiu por proposta (8b3). */
+export type Motivo = 'demissão' | 'contrato' | 'novo dono' | 'proposta';
 const momento = (ano: number, dia: number): number => ano - 1 + dia / DIAS_ANO;
 
 /** Diretoria e Humor de cada clube não europeu com ficha (chamado ao criar a memória). */
@@ -247,7 +254,7 @@ function escolherSubstituto(ctx: CtxDiretoria, clube: string, fora: Tecnico): Te
 }
 
 /** Registra o novo técnico no estado da diretoria (Confiança 60, contrato novo, tempo no cargo do anterior). */
-function novoTecnico(mem: Memoria, ctx: CtxDiretoria, clube: string, st: EstadoDiretoria, novo: Tecnico, motivo: ContagemDiretoria['saidas'][number]['motivo']): void {
+function novoTecnico(mem: Memoria, ctx: CtxDiretoria, clube: string, st: EstadoDiretoria, novo: Tecnico, motivo: Motivo): void {
   const agora = momento(ctx.ano, ctx.dia);
   mem.dir.saidas.push({ ano: ctx.ano, clube, motivo, anos: agora - st.inicio });
   st.tecnico = novo.nome;
@@ -260,14 +267,14 @@ function novoTecnico(mem: Memoria, ctx: CtxDiretoria, clube: string, st: EstadoD
 }
 
 /** Técnico sai (demissão com multa e Reputação −1, contrato vencido ou novo dono); o livre escolhido assume. */
-export function demitir(mem: Memoria, ctx: CtxDiretoria, clube: string, motivo: 'demissão' | 'contrato' | 'novo dono'): void {
+export function demitir(mem: Memoria, ctx: CtxDiretoria, clube: string, motivo: Motivo): void {
   const st = mem.diretoria.get(clube);
   const g = mem.gestao.get(clube);
   if (!st || !g) return;
   const velho = g.tecnico;
   const novo = escolherSubstituto(ctx, clube, velho);
   if (!novo) return;
-  if (motivo !== 'contrato') {
+  if (motivo === 'demissão' || motivo === 'novo dono') {
     const c = mem.financas.get(clube);
     if (c) {
       // Multa: salários restantes do contrato (PROVISORIO: o salário da ficha, 13 meses por ano).
@@ -278,12 +285,146 @@ export function demitir(mem: Memoria, ctx: CtxDiretoria, clube: string, motivo: 
     }
   }
   if (motivo === 'demissão') velho.reputacao = Math.max(1, velho.reputacao - 1);
+  assumir(mem, ctx, clube, st, g, novo, motivo);
+  if (velho.humano) largouClube(mem, ctx, clube, true);
+  else abrirVaga(mem, ctx, clube);
+}
+
+type GestaoClube = NonNullable<ReturnType<Memoria['gestao']['get']>>;
+
+/** O novo técnico assume o clube e o anterior vai para os livres. */
+function assumir(mem: Memoria, ctx: CtxDiretoria, clube: string, st: EstadoDiretoria, g: GestaoClube, novo: Tecnico, motivo: Motivo): void {
+  const velho = g.tecnico;
   Object.assign(novo, { clubeId: clube, clube: velho.clube, liga: velho.liga });
   Object.assign(velho, { clubeId: null, clube: '', liga: '' });
   trocarTecnico(g, novo, ctx.tatica);
   if (ctx.entradas[clube]) ctx.entradas[clube] = { ...ctx.entradas[clube], tecnico: novo };
   for (const k of [...mem.leituras.keys()]) if (k.startsWith(`${clube}>`)) mem.leituras.delete(k);
   novoTecnico(mem, ctx, clube, st, novo, motivo);
+}
+
+// ---------- 8b3: carreira do técnico do jogador (GDD-gestao 9) ----------
+
+/** PROVISORIO (8b3): propostas ao técnico do jogador. */
+export const PROPOSTAS_TECNICO = {
+  /** Clube com vaga oferece se a Reputação dele for até esta folga acima da do técnico. */
+  folga: 3,
+  /** A vaga fica aberta ao técnico do jogador por 4 semanas depois da saída. */
+  vagaDias: 28,
+  /** Livre: propostas a cada 4 semanas; sem proposta em 26 semanas, o último da Série B oferece. */
+  livreDias: 28,
+  ultimoBDias: 182,
+} as const;
+
+export interface EstadoCarreira {
+  vagas: { clube: string; quando: number; oferecida: boolean }[];
+  /** Livre desde (momento) e de qual clube saiu; null = empregado. */
+  livreDesde: number | null;
+  de: string | null;
+  proximo: number;
+  ultimaProposta: number;
+  /** Histórico da carreira: ano, clube e o que houve. */
+  historico: { ano: number; clube: string; fato: string }[];
+}
+
+export interface PropostaTecnico {
+  clube: string;
+  reputacao: number;
+  liga: string;
+  /** Vaga aberta ou o último da Série B (26 semanas sem proposta). */
+  motivo: 'vaga' | 'ultimo-b';
+  /** O técnico está empregado (aceitar = sair sem multa). */
+  empregado: boolean;
+  /** Confiança inicial da diretoria nele. */
+  confianca: number;
+}
+
+export function carreira(mem: Memoria): EstadoCarreira {
+  mem.carreira ??= { vagas: [], livreDesde: null, de: null, proximo: 0, ultimaProposta: 0, historico: [] };
+  return mem.carreira;
+}
+
+const brasileiro = (ctx: CtxDiretoria, clube: string): boolean => ['serie-a', 'serie-b'].some((l) => ctx.clubesPorLiga[l]?.includes(clube));
+
+function abrirVaga(mem: Memoria, ctx: CtxDiretoria, clube: string): void {
+  if (!ctx.jogador?.proposta || !brasileiro(ctx, clube)) return;
+  carreira(mem).vagas.push({ clube, quando: momento(ctx.ano, ctx.dia), oferecida: false });
+}
+
+/** O técnico do jogador deixou o clube: o mercado manual e os eventos de lá acabam; demitido ou sem renovar, fica livre. */
+function largouClube(mem: Memoria, ctx: CtxDiretoria, clube: string, livre: boolean): void {
+  if (mem.mercado?.manual.has(clube)) desligarManual(mem, clube);
+  mem.imprensa?.clubes.delete(clube);
+  if (!livre) return;
+  const c = carreira(mem);
+  const agora = momento(ctx.ano, ctx.dia);
+  Object.assign(c, { livreDesde: agora, de: clube, proximo: agora + PROPOSTAS_TECNICO.livreDias / DIAS_ANO, ultimaProposta: agora });
+  c.historico.push({ ano: ctx.ano, clube, fato: mem.dir.saidas[mem.dir.saidas.length - 1]?.motivo ?? 'saída' });
+}
+
+/** O técnico do jogador assume `clube`; o de lá vai para os livres e, se ele estava empregado, o clube antigo pega um livre (sem multa). */
+export function contratarJogador(mem: Memoria, ctx: CtxDiretoria, clube: string, t: Tecnico): boolean {
+  const st = mem.diretoria.get(clube);
+  const g = mem.gestao.get(clube);
+  if (!st || !g || g.tecnico === t) return false;
+  const antigo = t.clubeId;
+  if (antigo) {
+    const sa = mem.diretoria.get(antigo);
+    const ga = mem.gestao.get(antigo);
+    const sub = escolherSubstituto(ctx, antigo, t);
+    if (!sa || !ga || !sub) return false;
+    assumir(mem, ctx, antigo, sa, ga, sub, 'proposta');
+    largouClube(mem, ctx, antigo, false);
+    carreira(mem).historico.push({ ano: ctx.ano, clube: antigo, fato: 'saiu por proposta' });
+  }
+  assumir(mem, ctx, clube, st, g, t, 'proposta');
+  st.confianca = confiancaInicial(t, ctx.entradas[clube].clube);
+  const c = carreira(mem);
+  Object.assign(c, { livreDesde: null, de: null });
+  c.historico.push({ ano: ctx.ano, clube, fato: 'assumiu' });
+  if (ctx.jogador) ctx.jogador.clube = clube;
+  incluirNaImprensa(mem, clube);
+  return true;
+}
+
+/**
+ * Propostas ao técnico do jogador (só com o gancho `proposta`). Empregado: na janela e na virada (dia 1), de clubes com vaga,
+ * Reputação até a folga acima da dele e não menor que a do clube atual. Livre: a cada 4 semanas (e no dia 1), vagas pela
+ * Reputação; sem proposta em 26 semanas, o último da Série B. Resposta null = aceita se livre, recusa se empregado.
+ */
+export function cicloDoTecnico(mem: Memoria, ctx: CtxDiretoria, ultimoB: () => string[]): void {
+  const J = ctx.jogador;
+  const t = ctx.tecnicos.find((x) => x.humano);
+  if (!J?.proposta || !t) return;
+  const P = PROPOSTAS_TECNICO;
+  const c = carreira(mem);
+  const agora = momento(ctx.ano, ctx.dia);
+  const eps = 1e-9;
+  c.vagas = c.vagas.filter((v) => agora - v.quando <= P.vagaDias / DIAS_ANO + eps);
+  const livre = t.clubeId === null;
+  if (livre) {
+    if (agora < c.proximo - eps && ctx.dia > 1) return;
+    c.proximo = agora + P.livreDias / DIAS_ANO;
+  } else if (ctx.dia > 1 && janelaDaSemana(semanaDoDia(ctx.dia)) === null) return;
+  const rep = (id: string): number => ctx.entradas[id]?.clube.reputacao ?? 0;
+  const minimo = livre ? 0 : rep(t.clubeId!);
+  const oferecer = (clube: string, motivo: PropostaTecnico['motivo']): boolean => {
+    c.ultimaProposta = agora;
+    const p: PropostaTecnico = { clube, reputacao: rep(clube), liga: ctx.entradas[clube]?.clube.liga ?? '', motivo, empregado: !livre, confianca: confiancaInicial(t, ctx.entradas[clube].clube) };
+    const r = J.proposta!(p, mem) ?? livre;
+    if (!r) c.historico.push({ ano: ctx.ano, clube, fato: 'proposta recusada' });
+    return r && contratarJogador(mem, ctx, clube, t);
+  };
+  for (const v of c.vagas) {
+    if (v.oferecida || v.clube === t.clubeId || v.clube === c.de || rep(v.clube) > t.reputacao + P.folga || rep(v.clube) < minimo) continue;
+    if (!mem.gestao.get(v.clube) || mem.gestao.get(v.clube)!.tecnico.humano) continue;
+    v.oferecida = true;
+    if (oferecer(v.clube, 'vaga')) return;
+  }
+  if (livre && agora - c.ultimaProposta >= P.ultimoBDias / DIAS_ANO - eps) {
+    const alvo = ultimoB().filter((x) => x !== c.de && mem.gestao.has(x)).pop();
+    if (alvo) oferecer(alvo, 'ultimo-b');
+  }
 }
 
 /** Novo presidente ou investidor: Confiança vira 50; se ele "troca" o técnico, 25% de demissão. */
@@ -376,8 +517,14 @@ export function viradaDiretoria(mem: Memoria, ctx: CtxDiretoria, w: FechoVirada)
     // Contrato vencido: renova com Confiança 50+ ou meta cumprida (Gustavo, 15/11/2026).
     if (mem.gestao.get(clube)!.tecnico.nome === st.tecnico && st.contratoAte <= ctx.ano) {
       if (st.confianca >= DIRETORIA.contrato.renova || a !== 'Falhou') {
-        st.contratoAte = ctx.ano + w.rng.int(...DIRETORIA.contrato.anos);
-        mem.dir.renovacoes += 1;
+        const anos = w.rng.int(...DIRETORIA.contrato.anos);
+        // 8b3: o técnico do jogador aceita (escolhe de 1 a 3 anos) ou recusa e fica livre; null aceita a duração sorteada.
+        const pedido = g.tecnico.humano && ctx.jogador?.renovacao ? ctx.jogador.renovacao({ clube, anos, confianca: st.confianca, avaliacao: a }, mem) : null;
+        const n = pedido === null ? anos : Math.max(0, Math.min(DIRETORIA.contrato.anos[1], Math.round(pedido)));
+        if (n > 0) {
+          st.contratoAte = ctx.ano + n;
+          mem.dir.renovacoes += 1;
+        } else demitir(mem, ctx, clube, 'contrato');
       } else demitir(mem, ctx, clube, 'contrato');
     }
     mem.dir.confiancaVirada.push(st.confianca);

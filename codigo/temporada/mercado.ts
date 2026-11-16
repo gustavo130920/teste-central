@@ -8,7 +8,7 @@ import type { Rng } from '../motor/rng.ts';
 import { efetivo } from '../gestao/comissao.ts';
 import type { FichaReduzida } from '../gestao/financas.ts';
 import { FINANCAS } from '../gestao/financas.ts';
-import type { Conhecimento, Empresario } from '../gestao/mercado.ts';
+import type { Conhecimento, Empresario, Papel } from '../gestao/mercado.ts';
 import {
   MERCADO, chanceDoClube, chanceDoJogador, comissaoDoEmpresario, duracaoContrato, estimar, grupoDe, janelaDaSemana, papelDeQuemChega,
   papelNoElenco, pedidoDoClube, pedidoSalarial, politica, posicaoMaisFraca, reacaoAProposta, regiaoDaLiga, salarioReferencia, semanaDoDia, valorDeMercado,
@@ -27,7 +27,7 @@ const embaralhar = <T>(xs: T[], rng: Rng): T[] => {
 import { DIRETORIA } from '../gestao/diretoria.ts';
 import { avalDaDiretoria, parteDasVendas } from './diretoria.ts';
 
-const CRIA = 'Cria da casa';
+export const CRIA = 'Cria da casa';
 /** PROVISORIO: moral de quem chega (GDD-gestao 3, recém-contratado). */
 const MORAL_CHEGADA = 65;
 
@@ -71,6 +71,62 @@ export interface EstadoMercado {
   valorMedio: number[];
   /** Escala de cada europeu no ano 0: Força da ficha, média das 11 melhores e média do elenco (Força relativa, 14/11/2026). */
   escalaEuropa: Map<string, { forca: number; top: number; media: number }>;
+  /** 8b2: clubes com o mercado manual (o do jogador, quando não delega) e o que é só deles. */
+  manual: Set<string>;
+  observados: Map<string, string[]>;
+  transferiveis: Set<string>;
+  negociacoes: Negociacao[];
+  propostas: PropostaRecebida[];
+  /** Papel prometido a quem chegou pelo mercado manual (efeito da promessa quebrada fica para depois). */
+  promessas: Map<string, Papel>;
+  avisos: string[];
+  seqManual: number;
+}
+
+/** 8b2: negociação do clube do jogador (compra ou renovação). Cada rodada leva 1 ciclo (GDD-gestao 6). */
+export interface Negociacao {
+  id: number;
+  tipo: 'compra' | 'renovacao';
+  clube: string;
+  jogador: string;
+  vendedor: string | null;
+  preContrato: boolean;
+  fase: 'clube' | 'jogador';
+  /** Recusas na fase (3 fecham). */
+  rodada: number;
+  estado: 'aberta' | 'enviada' | 'fechada' | 'concluida';
+  /** Oferta ao clube (R$ mi) e valor acertado. */
+  oferta: number;
+  valor: number;
+  salario: number;
+  papel: Papel;
+  anos: number;
+  /** Fração do salário anual. */
+  luvas: number;
+  /** Contraproposta do outro lado, depois da 1ª recusa. */
+  contra: number | null;
+  /** Renovação: aumento inventado pelo Blefador (não descoberto). */
+  blefe: number;
+}
+
+/** 8b2: proposta de clube da IA por jogador do clube do jogador. */
+export interface PropostaRecebida {
+  id: number;
+  clube: string;
+  comprador: string;
+  jogador: string;
+  oferta: number;
+  /** Até onde o comprador sobe. */
+  cap: number;
+  europa: boolean;
+  maior: boolean;
+  reacao: 'fica' | 'aumento' | 'sai';
+  forcada: boolean;
+  est: { nota: number; pot: number };
+  rodada: number;
+  estado: 'nova' | 'aceita' | 'recusada' | 'contra' | 'fim';
+  contra: number | null;
+  semana: number;
 }
 
 export interface ContextoMercado {
@@ -99,6 +155,7 @@ export function criarMercado(ctx: ContextoMercado): EstadoMercado {
     reduzidas: new Map(ctx.reduzidas.map((r) => [r.clubeId, { perfil: r.perfil, orcamento: r.orcamento, orcamentoAno: r.orcamento, teto: r.teto }])),
     emprestimos: [], preContratos: new Map(), compras: new Map(), tentativasEuropa: new Map(), fechadas: new Set(), renovacao: new Map(), querSair: new Set(), fica: new Set(),
     transferencias: [], contagem: zeros(), valorMedio: [], escalaEuropa: new Map(),
+    manual: new Set(), observados: new Map(), transferiveis: new Set(), negociacoes: [], propostas: [], promessas: new Map(), avisos: [], seqManual: 0,
   };
   atualizarContexto(m, ctx);
   return m;
@@ -116,20 +173,20 @@ export function atualizarContexto(m: EstadoMercado, ctx: ContextoMercado): void 
 
 // ---------- Leitura do clube ----------
 
-const anoCalendario = (m: EstadoMercado): number => FINANCAS.anoInicial + m.ano;
-const semanasDeContrato = (m: EstadoMercado, j: Jogador, semana: number): number | null =>
+export const anoCalendario = (m: EstadoMercado): number => FINANCAS.anoInicial + m.ano;
+export const semanasDeContrato = (m: EstadoMercado, j: Jogador, semana: number): number | null =>
   j.contrato === null ? null : (j.contrato - anoCalendario(m)) * 52 + (52 - semana);
 
-function perfilDe(mem: Memoria, clube: string): string {
+export function perfilDe(mem: Memoria, clube: string): string {
   return mem.financas.get(clube)?.perfil ?? mem.mercado!.reduzidas.get(clube)?.perfil ?? 'Tradicional médio';
 }
-const caixaNegativo = (mem: Memoria, clube: string): boolean => (mem.financas.get(clube)?.caixa ?? 0) < 0;
-function orcamentoDe(mem: Memoria, clube: string): number {
+export const caixaNegativo = (mem: Memoria, clube: string): boolean => (mem.financas.get(clube)?.caixa ?? 0) < 0;
+export function orcamentoDe(mem: Memoria, clube: string): number {
   const c = mem.financas.get(clube);
   if (c) return c.caixa < 0 ? 0 : c.orcamento + (c.credito ?? 0);
   return mem.mercado!.reduzidas.get(clube)?.orcamento ?? 0;
 }
-function tetoDe(mem: Memoria, clube: string): number {
+export function tetoDe(mem: Memoria, clube: string): number {
   return mem.financas.get(clube)?.teto ?? mem.mercado!.reduzidas.get(clube)?.teto ?? Infinity;
 }
 
@@ -147,9 +204,9 @@ export function folhaDoClube(mem: Memoria, clube: string): number {
 }
 
 const regiao = (m: EstadoMercado, clube: string | null) => regiaoDaLiga(clube ? m.clubes.get(clube)?.liga ?? null : null);
-const referencia = (mem: Memoria, clube: string, nota: number): number => salarioReferencia(nota, regiao(mem.mercado!, clube), perfilDe(mem, clube) === 'Pequeno sobrevivente');
+export const referencia = (mem: Memoria, clube: string, nota: number): number => salarioReferencia(nota, regiao(mem.mercado!, clube), perfilDe(mem, clube) === 'Pequeno sobrevivente');
 
-function olheiros(mem: Memoria, clube: string): { precAtual: number; precPot: number; alcAtual: number; alcPot: number } {
+export function olheiros(mem: Memoria, clube: string): { precAtual: number; precPot: number; alcAtual: number; alcPot: number } {
   const g = mem.gestao.get(clube);
   if (!g) return { precAtual: 10, precPot: 10, alcAtual: 10, alcPot: 10 };
   return {
@@ -157,7 +214,7 @@ function olheiros(mem: Memoria, clube: string): { precAtual: number; precPot: nu
     precPot: efetivo(g.comissao, 'Olheiro potencial', 'Prec'), alcPot: efetivo(g.comissao, 'Olheiro potencial', 'Alc'),
   };
 }
-const diretor = (mem: Memoria, clube: string, sigla: 'Neg' | 'Rede'): number => {
+export const diretor = (mem: Memoria, clube: string, sigla: 'Neg' | 'Rede'): number => {
   const g = mem.gestao.get(clube);
   return g ? efetivo(g.comissao, 'Diretor', sigla) : 10;
 };
@@ -165,9 +222,9 @@ const diretor = (mem: Memoria, clube: string, sigla: 'Neg' | 'Rede'): number => 
 /** Estimativas da semana (a nota só muda a cada 4 semanas e o conhecimento só nos relatórios). */
 const cache = new Map<string, { nota: number; pot: number }>();
 const cacheOlheiros = new Map<string, ReturnType<typeof olheiros>>();
-const limparCache = (): void => { cache.clear(); cacheOlheiros.clear(); };
+export const limparCache = (): void => { cache.clear(); cacheOlheiros.clear(); };
 
-function estimativa(mem: Memoria, clube: string, j: Jogador): { nota: number; pot: number } {
+export function estimativa(mem: Memoria, clube: string, j: Jogador): { nota: number; pot: number } {
   if (j.clubeId === clube) return { nota: j.nota, pot: j.potencial };
   const chave = `${clube}>${j.id}`;
   const c = cache.get(chave);
@@ -178,17 +235,17 @@ function estimativa(mem: Memoria, clube: string, j: Jogador): { nota: number; po
   return e;
 }
 
-function valorEstimado(mem: Memoria, clube: string, j: Jogador, semana: number): number {
+export function valorEstimado(mem: Memoria, clube: string, j: Jogador, semana: number): number {
   const m = mem.mercado!;
   const e = estimativa(mem, clube, j);
   return valorDeMercado({ nota: e.nota, pot: e.pot, idade: j.idade, regiao: regiao(m, j.clubeId), semanasDeContrato: semanasDeContrato(m, j, semana), notas: m.notas.get(j.id) ?? [] });
 }
 
-const clubeDoJogador = (mem: Memoria, id: string): string | null => {
+export const clubeDoJogador = (mem: Memoria, id: string): string | null => {
   for (const [c, js] of Object.entries(mem.elencos)) if (js.some((j) => j.id === id)) return c;
   return null;
 };
-const emprestado = (m: EstadoMercado, id: string): boolean => m.emprestimos.length > 0 && m.emprestimos.some((e) => e.jogador === id);
+export const emprestado = (m: EstadoMercado, id: string): boolean => m.emprestimos.length > 0 && m.emprestimos.some((e) => e.jogador === id);
 
 // ---------- Recálculo e relatórios (a cada 4 semanas) ----------
 
@@ -236,13 +293,20 @@ function relatorios(mem: Memoria): void {
       .filter((x) => !europeu || Math.max(x.e.nota, x.e.pot) >= forca - M.europa.folgaForca)
       .sort((a, b) => b.e.nota - a.e.nota);
     const k = (id: string): Conhecimento => m.conhecimento.get(`${clube}>${id}`) ?? m.conhecimento.set(`${clube}>${id}`, { atual: 0, pot: 0 }).get(`${clube}>${id}`)!;
+    // 8b2: os observados do jogador vêm antes da posição mais fraca.
+    const obs = m.observados.get(clube);
+    if (obs?.length) {
+      const ids = new Set(obs);
+      const vistos = todosOsCandidatos(mem, clube).filter((j) => ids.has(j.id)).map((j) => ({ j, e: estimativa(mem, clube, j) }));
+      ranking.splice(0, ranking.length, ...vistos, ...ranking.filter((x) => !ids.has(x.j.id)));
+    }
     for (const x of ranking.filter((x) => k(x.j.id).atual < 2).slice(0, Math.ceil(o.alcAtual / 2))) k(x.j.id).atual += 1;
     for (const x of ranking.filter((x) => x.j.idade <= M.jovem.idade && k(x.j.id).pot < 2).slice(0, Math.ceil(o.alcPot / 2))) k(x.j.id).pot += 1;
   }
 }
 
 /** Jogadores de outros clubes do mundo e livres (sem os emprestados e os com pré-contrato). */
-function todosOsCandidatos(mem: Memoria, clube: string): Jogador[] {
+export function todosOsCandidatos(mem: Memoria, clube: string): Jogador[] {
   const m = mem.mercado!;
   const out: Jogador[] = [];
   for (const [c, js] of Object.entries(mem.elencos)) if (c !== clube) for (const j of js) if (!emprestado(m, j.id) && !m.preContratos.has(j.id)) out.push(j);
@@ -255,6 +319,7 @@ function todosOsCandidatos(mem: Memoria, clube: string): Jogador[] {
 function renovacoes(mem: Memoria, semana: number, rng: Rng): void {
   const m = mem.mercado!;
   for (const clube of mem.gestao.keys()) {
+    if (m.manual.has(clube)) continue; // 8b2: o jogador renova
     const elenco = mem.elencos[clube];
     for (const j of elenco) {
       const sem = semanasDeContrato(m, j, semana);
@@ -293,7 +358,7 @@ function renovacoes(mem: Memoria, semana: number, rng: Rng): void {
   }
 }
 
-const mexerMemoria = (e: Empresario, clube: string, d: number): void => { e.memoria[clube] = Math.max(-5, Math.min(5, (e.memoria[clube] ?? 0) + d)); };
+export const mexerMemoria = (e: Empresario, clube: string, d: number): void => { e.memoria[clube] = Math.max(-5, Math.min(5, (e.memoria[clube] ?? 0) + d)); };
 
 // ---------- Semana: janelas e livres ----------
 
@@ -311,12 +376,53 @@ export function semanaDeMercado(mem: Memoria, dia: number, rng: Rng): void {
   for (const clube of clubes) {
     const elenco = mem.elencos[clube];
     // Livres a qualquer momento: emergência abaixo de 18 jogadores ou de 2 goleiros.
-    if (elenco.length < M.elenco.min || elenco.filter((j) => j.posicao === 'GOL').length < M.elenco.goleiros) assinarLivreDeEmergencia(mem, clube, semana, rng);
-    if (janela === null) continue;
+    if (elenco.length < M.elenco.min || elenco.filter((j) => j.posicao === 'GOL').length < M.elenco.goleiros) {
+      const antes = new Set(elenco.map((j) => j.id));
+      assinarLivreDeEmergencia(mem, clube, semana, rng);
+      if (m.manual.has(clube)) for (const j of mem.elencos[clube].filter((x) => !antes.has(x.id))) m.avisos.push(`O diretor contratou ${j.nome} (${j.posicao}, livre): elenco abaixo de 18 ou de 2 goleiros.`);
+    }
+    if (janela === null || m.manual.has(clube)) continue;
     if (m.europeus.has(clube)) { tentativaEuropeia(mem, clube, semana, janela, rng); continue; }
     if ((m.compras.get(clube) ?? 0) >= M.compras[janela] || elenco.length >= M.elenco.max) continue;
     tentarReforco(mem, clube, semana, janela, rng);
   }
+  if (janela !== null && m.manual.size) propostasPorTransferiveis(mem, semana, rng);
+}
+
+/** 8b2: transferível do clube manual recebe proposta de um clube da IA que compra e precisa da posição (PROVISORIO). */
+function propostasPorTransferiveis(mem: Memoria, semana: number, rng: Rng): void {
+  const m = mem.mercado!;
+  const T = M.manual.transferivel;
+  for (const clube of m.manual) {
+    for (const j of mem.elencos[clube] ?? []) {
+      if (!m.transferiveis.has(j.id) || m.propostas.some((p) => p.jogador === j.id && p.estado !== 'fim') || !rng.pct(T.chance)) continue;
+      const g = grupoDe(j);
+      const opcoes = [...mem.gestao.keys()].filter((c) => {
+        if (c === clube || m.manual.has(c) || m.europeus.has(c) || m.fechadas.has(`${c}>${j.id}`)) return false;
+        const pol = politica(perfilDe(mem, c), caixaNegativo(mem, c));
+        const el = mem.elencos[c];
+        if (!pol.compra || el.length >= M.elenco.max || j.idade > pol.idadeMax) return false;
+        // "Precisa da posição": ele seria titular lá e o grupo não está no máximo (MERCADO.grupos).
+        if (el.filter((x) => grupoDe(x) === g).length >= (M.grupos[g]?.[1] ?? Infinity)) return false;
+        return papelDeQuemChega(el, g, estimativa(mem, c, j).nota) === 'titular' && valorEstimado(mem, c, j, semana) * T.oferta[0] <= orcamentoDe(mem, c);
+      });
+      if (!opcoes.length) continue;
+      const c = opcoes[rng.int(0, opcoes.length - 1)];
+      const v = valorEstimado(mem, c, j, semana);
+      const orc = orcamentoDe(mem, c);
+      const oferta = Math.min(orc, v * (T.oferta[0] + rng.n() * (T.oferta[1] - T.oferta[0])));
+      const maior = (m.clubes.get(c)?.reputacao ?? 0) > (m.clubes.get(clube)?.reputacao ?? 0);
+      const ag = m.agenteDe.get(j.id);
+      const reacao = !maior ? 'fica' : ag?.perfil === 'Mercenário' ? 'sai' : reacaoAProposta(j.lealdade, j.ambicao);
+      receberProposta(mem, { clube, comprador: c, jogador: j.id, oferta, cap: Math.min(orc, Math.max(oferta, v * politica(perfilDe(mem, c)).oferta)), europa: false, maior, reacao, forcada: maior && ag?.perfil === 'Mercenário', est: estimativa(mem, c, j), semana });
+    }
+  }
+}
+
+function receberProposta(mem: Memoria, p: Omit<PropostaRecebida, 'id' | 'rodada' | 'estado' | 'contra'>): void {
+  const m = mem.mercado!;
+  if (m.propostas.some((x) => x.jogador === p.jogador && x.comprador === p.comprador && x.estado !== 'fim')) return;
+  m.propostas.push({ ...p, id: ++m.seqManual, rodada: 0, estado: 'nova', contra: null });
 }
 
 function assinarLivreDeEmergencia(mem: Memoria, clube: string, semana: number, rng: Rng): void {
@@ -330,7 +436,7 @@ function assinarLivreDeEmergencia(mem: Memoria, clube: string, semana: number, r
   concluir(mem, j, null, clube, { valor: 0, salario, semana, tipo: 'livre' }, rng);
 }
 
-interface Alvo { j: Jogador; est: { nota: number; pot: number }; valor: number; livre: boolean; preContrato: boolean }
+export interface Alvo { j: Jogador; est: { nota: number; pot: number }; valor: number; livre: boolean; preContrato: boolean }
 
 /** Uma tentativa de reforço do clube da IA na posição mais fraca (GDD-gestao 6 e 11). */
 function tentarReforco(mem: Memoria, clube: string, semana: number, janela: 0 | 1, rng: Rng): void {
@@ -406,6 +512,11 @@ function negociar(mem: Memoria, comprador: string, alvo: Alvo, teto: number, sem
     const cap = alvo.valor * b;
     let oferta = alvo.valor * (a + rng.n() * (b - a));
     const orc = orcamentoDe(mem, comprador);
+    // 8b2: o clube do jogador responde à proposta no ciclo (uma rodada por ciclo).
+    if (m.manual.has(vendedor)) {
+      if (oferta <= orc) receberProposta(mem, { clube: vendedor, comprador, jogador: j.id, oferta, cap: Math.min(cap, orc), europa, maior, reacao, forcada, est: alvo.est, semana });
+      return false;
+    }
     let aceitou = false;
     for (let r = 0; r < M.clube.rodadas; r++) {
       if (oferta > orc) break;
@@ -426,6 +537,16 @@ function negociar(mem: Memoria, comprador: string, alvo: Alvo, teto: number, sem
     }
     valor = oferta;
   }
+  return fecharComJogador(mem, comprador, alvo, vendedor, valor, forcada, semana, rng, europa);
+}
+
+/** Negociação do clube da IA com o jogador, depois de acertar com o clube (ou livre, ou pré-contrato). */
+export function fecharComJogador(mem: Memoria, comprador: string, alvo: Alvo, vendedor: string | null, valor: number, forcada: boolean, semana: number, rng: Rng, europa = false): boolean {
+  const m = mem.mercado!;
+  const j = alvo.j;
+  const cComp = m.clubes.get(comprador)!;
+  const ag = m.agenteDe.get(j.id);
+  const papelNovo = papelDeQuemChega(mem.elencos[comprador], grupoDe(j), alvo.est.nota);
   // Negociação com o jogador.
   const regiaoComp = referencia(mem, comprador, alvo.est.nota);
   const pedido = pedidoSalarial(j.salario, referencia(mem, comprador, j.nota), ag?.ganancia ?? 10);
@@ -458,7 +579,7 @@ function negociar(mem: Memoria, comprador: string, alvo: Alvo, teto: number, sem
 }
 
 /** Venda recusada com proposta maior: aumento de 15% a 30% para ficar, ou "quer sair" (Moral −10 e −3 por ciclo). */
-function recusaComProposta(mem: Memoria, clube: string, j: Jogador, reacao: 'fica' | 'aumento' | 'sai', rng: Rng): void {
+export function recusaComProposta(mem: Memoria, clube: string, j: Jogador, reacao: 'fica' | 'aumento' | 'sai', rng: Rng): void {
   const m = mem.mercado!;
   if (reacao === 'fica') return;
   if (reacao === 'aumento') {
@@ -476,10 +597,10 @@ function recusaComProposta(mem: Memoria, clube: string, j: Jogador, reacao: 'fic
 /** Queda de −3 por ciclo de quem quer sair e teve a venda recusada. */
 export const quedaQuerSair = (mem: Memoria, id: string): number => (mem.mercado?.querSair.has(id) ? M.lealdade.moralCiclo : 0);
 
-interface Fechamento { valor: number; salario: number; semana: number; tipo: Transferencia['tipo']; europa?: boolean }
+interface Fechamento { valor: number; salario: number; semana: number; tipo: Transferencia['tipo']; europa?: boolean; anos?: number }
 
 /** Move o jogador, paga a transferência e a comissão do empresário e registra o negócio. */
-function concluir(mem: Memoria, j: Jogador, de: string | null, para: string, f: Fechamento, rng: Rng): void {
+export function concluir(mem: Memoria, j: Jogador, de: string | null, para: string, f: Fechamento, rng: Rng): void {
   const m = mem.mercado!;
   const cria = j.qualidades.includes(CRIA);
   if (de) mem.elencos[de] = mem.elencos[de].filter((x) => x.id !== j.id);
@@ -489,7 +610,7 @@ function concluir(mem: Memoria, j: Jogador, de: string | null, para: string, f: 
   }
   if (f.tipo !== 'emprestimo') {
     j.salario = Math.round(f.salario);
-    const dur = j.idade >= M.renovar.veterano ? 1 : duracaoContrato(j.idade, (a, b) => rng.int(a, b));
+    const dur = f.anos ?? (j.idade >= M.renovar.veterano ? 1 : duracaoContrato(j.idade, (a, b) => rng.int(a, b)));
     j.contrato = anoCalendario(m) + dur - (f.semana <= 26 ? 1 : 0);
     if (cria) j.qualidades = j.qualidades.filter((q) => q !== CRIA);
     m.querSair.delete(j.id);
@@ -514,7 +635,7 @@ function concluir(mem: Memoria, j: Jogador, de: string | null, para: string, f: 
   m.transferencias.push({ ano: m.ano, semana: f.semana, jogador: j.id, de, para, valor: f.valor, tipo: f.tipo, europa: !!f.europa, cria });
 }
 
-function pagar(mem: Memoria, clube: string, total: number, valor: number, comissao: number): void {
+export function pagar(mem: Memoria, clube: string, total: number, valor: number, comissao: number): void {
   const c = mem.financas.get(clube);
   if (c) {
     // O que passa do orçamento sai do crédito do Gastador e vira dívida, sem passar pelo caixa.
@@ -541,7 +662,7 @@ function tentarEmprestimo(mem: Memoria, clube: string, grupo: string, piorTitula
   const folga = tetoDe(mem, clube) - folhaDoClube(mem, clube);
   const opcoes: { j: Jogador; origem: string; nota: number }[] = [];
   for (const [origem, js] of Object.entries(mem.elencos)) {
-    if (origem === clube || m.europeus.has(origem)) continue;
+    if (origem === clube || m.europeus.has(origem) || m.manual.has(origem)) continue;
     const p = mem.periodo.get(origem);
     for (const j of js) {
       if (grupoDe(j) !== grupo || j.idade > M.emprestimo.idade || emprestado(m, j.id) || m.preContratos.has(j.id)) continue;

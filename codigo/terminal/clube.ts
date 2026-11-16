@@ -1,5 +1,5 @@
 // Uso: npm run clube -- [SEMENTE] [--auto] [--entradas "1;Fulano;2;;;"] [--anos N]
-// Carreira com o clube do jogador (etapa 4, 8ª fatia, partes 8a e 8b1; GDD-gestao 1 e 8, GDD-motor 7). Leitura de teclado síncrona.
+// Carreira com o clube do jogador (etapa 4, 8ª fatia, partes 8a, 8b1, 8b2 e 8b3; GDD-gestao 1 e 8, GDD-motor 7). Leitura de teclado síncrona.
 // Enter em qualquer pergunta = "Avançar" (mantém o que está, ou deixa com a delegação).
 // --auto: Enter em tudo (teste rápido). --entradas: respostas na ordem, separadas por ";" (depois delas, Enter).
 import { readSync } from 'node:fs';
@@ -13,7 +13,13 @@ import type { JogoDisputado } from '../temporada/temporada.ts';
 import type { Area, ControleJogador, FichaTecnico, InfoJogo, Origem } from '../temporada/jogador.ts';
 import { AREAS, ATALHOS, TECNICO_JOGADOR, assumirClube, criarTecnicoDoJogador, mudarTatica, progressoTatica } from '../temporada/jogador.ts';
 import { criarMundo, jogarAno, virar } from '../temporada/virada.ts';
-import { semanaDoDia } from '../gestao/mercado.ts';
+import type { Papel } from '../gestao/mercado.ts';
+import { MERCADO, grupoDe, semanaDoDia } from '../gestao/mercado.ts';
+import { FINANCAS } from '../gestao/financas.ts';
+import type { Negociacao } from '../temporada/mercado.ts';
+import { folhaDoClube, orcamentoDe, tetoDe } from '../temporada/mercado.ts';
+import type { InfoMercado, Termos, Visto } from '../temporada/mercadoJogador.ts';
+import { acharJogador, alternarTransferivel, buscar, chanceDaNegociacao, enviar, iniciarCompra, iniciarRenovacao, luvasEmMi, observar, relatorio, responder, ver } from '../temporada/mercadoJogador.ts';
 import { carregarBase } from './carregar.ts';
 
 // ---------- Entrada ----------
@@ -73,7 +79,7 @@ const brasileiros = m.clubes.filter((c) => (c.liga === 'serie-a' || c.liga === '
 
 console.log('\n=== Nova carreira (8ª fatia, parte 8a) ===');
 brasileiros.forEach((c, i) => console.log(`  ${String(i + 1).padStart(2)}) ${c.nomeCurto.padEnd(16)} ${c.liga === 'serie-a' ? 'Série A' : 'Série B'} · Reputação ${c.reputacao} · ${perfil.get(c.id) ?? '-'}`));
-const clube = brasileiros[escolher('Clube (número; Enter = 1):', brasileiros.length) ?? 0];
+let clube = brasileiros[escolher('Clube (número; Enter = 1):', brasileiros.length) ?? 0];
 const antigo = m.tecnicos.find((t) => t.clubeId === clube.id)!;
 const nomeTec = perguntar('Nome do técnico (Enter = Técnico Novato):') || 'Técnico Novato';
 const ORIGENS: Origem[] = ['Ex-jogador', 'Estudioso', 'Formador da base'];
@@ -97,21 +103,22 @@ assumirClube(m.tecnicos, clube, tecnico);
 console.log(`\n${tecnico.nome} assume o ${clube.nome} (Reputação ${tecnico.reputacao}). ${antigo.nome} fica livre.`);
 
 // Delegação (GDD-gestao 8). Na 8a, as áreas de negócio ficam sempre com a IA.
-const delegado: Record<Area, boolean> = { tatica: false, treino: false, imprensa: false, mercado: true, comercial: true, base: true };
+const delegado: Record<Area, boolean> = { tatica: false, treino: false, imprensa: false, mercado: false, comercial: true, base: true };
+const SO_IA: Area[] = ['comercial', 'base'];
 const limites = { cargaMax: 'pesada' as Carga, tom: 'Humildade' };
 function menuDelegacao(): void {
   for (;;) {
-    console.log('  Delegação: ' + (Object.keys(AREAS) as Area[]).map((a, i) => `${i + 1}) ${AREAS[a]}: ${delegado[a] ? 'delegado' : 'você'}${ATALHOS.gestor.includes(a) ? ' (manual na 8b)' : ''}`).join(' · '));
+    console.log('  Delegação: ' + (Object.keys(AREAS) as Area[]).map((a, i) => `${i + 1}) ${AREAS[a]}: ${delegado[a] ? 'delegado' : 'você'}${SO_IA.includes(a) ? ' (manual depois)' : ''}`).join(' · '));
     console.log(`  Limites: carga máxima ${limites.cargaMax} · tom padrão ${limites.tom}. Atalhos: t) Técnico (campo com o auxiliar)  g) tudo com você  c) carga máxima  m) tom`);
     const v = perguntar('  Mudar (número, t, g, c, m; Enter sai):');
     if (!v) return;
-    if (v === 't') for (const a of ATALHOS.tecnico) delegado[a] = true;
-    else if (v === 'g') for (const a of ATALHOS.tecnico) delegado[a] = false;
+    if (v === 't') { for (const a of ATALHOS.tecnico) delegado[a] = true; delegado.mercado = false; }
+    else if (v === 'g') for (const a of [...ATALHOS.tecnico, 'mercado' as Area]) delegado[a] = false;
     else if (v === 'c') limites.cargaMax = (['leve', 'normal', 'pesada'] as Carga[])[escolher('  Carga máxima 1) leve 2) normal 3) pesada:', 3) ?? 2];
     else if (v === 'm') limites.tom = perguntar('  Tom padrão (ex.: Humildade, Confiança):') || 'Humildade';
     else {
       const a = (Object.keys(AREAS) as Area[])[Number(v) - 1];
-      if (a && !ATALHOS.gestor.includes(a)) delegado[a] = !delegado[a];
+      if (a && !SO_IA.includes(a)) delegado[a] = !delegado[a];
     }
   }
 }
@@ -131,6 +138,7 @@ let titulares: string[] | null = null;
 let padrao: Partial<PadraoTime> = {};
 const rodada: JogoDisputado[] = [];
 let ultimoDoClube: { d: JogoDisputado; r: ResultadoPartida } | null = null;
+let avisadoLivre = false;
 
 const PADRAO: [keyof PadraoTime, string[]][] = [
   ['linha', ['Alta', 'Média', 'Baixa']], ['pressao', ['Alta', 'Média', 'Baixa']], ['largura', ['Aberta', 'Normal', 'Estreita']],
@@ -187,6 +195,117 @@ function cabecalho(jogo: InfoJogo, mem: Memoria): void {
   console.log(`  ${COMP[liga]}: ${ordem.indexOf(clube.id) + 1}º com ${pts} pts · Confiança ${st?.confianca.toFixed(0) ?? '-'} · Humor ${mem.humor.get(clube.id)?.toFixed(0) ?? '-'} · caixa R$ ${mem.financas.get(clube.id)?.caixa.toFixed(1) ?? '-'} mi`);
 }
 
+// ---------- Mercado manual (8b2) ----------
+const GRUPOS = ['GOL', 'ZAG', 'LAT', 'VOL', 'MC', 'MO', 'PON', 'CA'];
+const PAPEIS: Papel[] = ['titular', 'rotacao', 'reserva'];
+const fx = (f: { min: number; max: number } | null): string => (!f ? '?' : f.min === f.max ? `${f.min}` : `${f.min}-${f.max}`);
+const linhaVisto = (v: Visto, i: number): string =>
+  `    ${String(i + 1).padStart(2)}) ${v.j.posicao.padEnd(5)} ${v.j.nome.padEnd(18)} ${String(v.j.idade).padStart(2)} anos · ${(v.clube ? nome(v.clube) : 'livre').padEnd(14)} · nota ${fx(v.nota).padEnd(5)} · Pot ${fx(v.pot).padEnd(5)} · R$ ${v.valor.toFixed(2)} mi · rel. ${v.relatorios}`;
+
+function resumoMercado(info: InfoMercado, mem: Memoria): void {
+  const fin = mem.financas.get(clube.id);
+  const jan = info.janela === null ? 'fechado (renovação a qualquer momento)' : `janela aberta até a semana ${MERCADO.janelas[info.janela][1]}`;
+  console.log(`--- 3. Mercado · ${jan} · orçamento R$ ${orcamentoDe(mem, clube.id).toFixed(2)} mi · folha ${Math.round(folhaDoClube(mem, clube.id))} de ${Math.round(tetoDe(mem, clube.id))} mil · elenco ${m.elencos[clube.id].length}${fin ? ` · caixa R$ ${fin.caixa.toFixed(1)} mi` : ''} ---`);
+}
+
+function avisosDoMercado(mem: Memoria): void {
+  const mm = mem.mercado!;
+  for (const a of mm.avisos) console.log(`  · ${a}`);
+  mm.avisos.length = 0;
+}
+
+function telaNegociacao(n: Negociacao, mem: Memoria): void {
+  const j = acharJogador(mem, n.jogador);
+  if (!j) return;
+  const tipo = n.tipo === 'renovacao' ? 'Renovação' : n.preContrato ? 'Pré-contrato' : n.vendedor ? `Compra (${nome(n.vendedor)})` : 'Livre';
+  console.log(`  ${tipo} de ${j.nome} · ${n.fase === 'clube' ? 'com o clube' : 'com o jogador'} · recusas ${n.rodada} de 3${n.contra !== null ? ` · pedem ${n.fase === 'clube' ? `R$ ${n.contra.toFixed(2)} mi` : `${n.contra} mil`}` : ''}${n.estado === 'enviada' ? ' · ENVIADA (resposta no próximo ciclo)' : ''}`);
+  if (n.estado === 'enviada') return;
+  const t: Termos = {};
+  if (n.fase === 'clube') {
+    const v = perguntar(`  Oferta em R$ mi (Enter = ${n.oferta.toFixed(2)}):`);
+    if (v) t.oferta = Number(v.replace(',', '.'));
+  } else {
+    const s = perguntar(`  Salário em R$ mil/mês (Enter = ${n.salario}):`);
+    if (s) t.salario = Number(s);
+    const p = escolher(`  Papel prometido ${lista(['titular', 'rotação', 'reserva'])} (Enter = ${n.papel}):`, 3);
+    if (p !== null) t.papel = PAPEIS[p];
+    const a = perguntar(`  Anos de contrato, 1 a 5 (Enter = ${n.anos}):`);
+    if (a) t.anos = Number(a);
+    const l = perguntar(`  Luvas, % do salário anual, 0 a 50 (Enter = ${Math.round(n.luvas * 100)}):`);
+    if (l) t.luvas = Number(l) / 100;
+  }
+  if (Object.values(t).some((x) => typeof x === 'number' && !Number.isFinite(x))) { console.log('  Valor inválido.'); return; }
+  const previa = { ...n, ...t };
+  const extra = n.fase === 'jogador' && (previa.luvas ?? 0) > 0 ? ` · luvas R$ ${luvasEmMi(previa).toFixed(2)} mi` : '';
+  if (perguntar(`  Chance ${chanceDaNegociacao(mem, previa).toFixed(0)}%${extra}. Enviar? (Enter = sim, n = não):`) === 'n') return;
+  const erro = enviar(mem, n, t);
+  console.log(erro ? `  ${erro}` : '  Enviada: a resposta chega no próximo ciclo.');
+}
+
+function telaJogador(j: Jogador, info: InfoMercado, mem: Memoria): void {
+  for (const l of relatorio(mem, clube.id, j, info.semana)) console.log(`  ${l}`);
+  const meu = j.clubeId === clube.id;
+  const mm = mem.mercado!;
+  const v = perguntar(meu ? `  r) renovar  t) ${mm.transferiveis.has(j.id) ? 'tirar da' : 'pôr na'} lista de transferíveis  Enter volta:` : '  c) comprar  p) pré-contrato  o) observar ou deixar de observar  Enter volta:');
+  if (meu && v === 't') console.log(alternarTransferivel(mem, j.id) ? '  Transferível: clubes da IA podem fazer proposta na janela.' : '  Fora da lista.');
+  if (meu && v === 'r') { const n = iniciarRenovacao(mem, clube.id, j.id); avisosDoMercado(mem); if (typeof n === 'string') console.log(`  ${n}`); else telaNegociacao(n, mem); }
+  if (!meu && v === 'o') console.log(`  ${observar(mem, clube.id, j.id)}`);
+  if (!meu && (v === 'c' || v === 'p')) { const n = iniciarCompra(mem, clube.id, j.id, info.dia, v === 'p'); if (typeof n === 'string') console.log(`  ${n}`); else telaNegociacao(n, mem); }
+}
+
+function escolherDaLista(vs: Visto[], info: InfoMercado, mem: Memoria): void {
+  vs.forEach((v, i) => console.log(linhaVisto(v, i)));
+  if (!vs.length) { console.log('  Ninguém.'); return; }
+  const k = escolher('  Número para o relatório (Enter volta):', vs.length);
+  if (k !== null) telaJogador(vs[k].j, info, mem);
+}
+
+function telaMercado(info: InfoMercado, mem: Memoria): void {
+  const mm = mem.mercado!;
+  resumoMercado(info, mem);
+  avisosDoMercado(mem);
+  for (const p of mm.propostas.filter((x) => x.clube === clube.id && x.estado === 'nova')) console.log(`  PROPOSTA: ${nome(p.comprador)} oferece R$ ${p.oferta.toFixed(2)} mi por ${nomeJogador(p.jogador)}`);
+  if (auto && !fila.length) return; // teste rápido: nada manual
+  const vencendo = m.elencos[clube.id].filter((j) => j.contrato !== null && j.contrato <= FINANCAS.anoInicial + m.ano && !mm.preContratos.has(j.id) && mm.renovacao.get(j.id) !== 'ok');
+  if (vencendo.length) console.log(`  Contrato acaba no fim do ano: ${vencendo.map((j) => j.nome).join(', ')}`);
+  for (;;) {
+    const negs = mm.negociacoes.filter((n) => n.clube === clube.id && (n.estado === 'aberta' || n.estado === 'enviada'));
+    const props = mm.propostas.filter((x) => x.clube === clube.id && x.estado === 'nova');
+    const v = perguntar(`  b) buscar  o) observados (${mm.observados.get(clube.id)?.length ?? 0})  n) negociações (${negs.length})  p) propostas (${props.length})  e) elenco  d) delegação  Enter = segue:`);
+    if (!v) return;
+    if (v === 'b') {
+      if (info.janela === null) console.log('  Fora da janela: dá para buscar e observar, mas não comprar.');
+      const g = perguntar(`  Posição ${GRUPOS.join(' ')} (Enter = todas):`).toUpperCase();
+      const idade = Number(perguntar('  Idade máxima (Enter = sem limite):')) || 99;
+      const nota = Number(perguntar('  Nota estimada mínima (Enter = 0):')) || 0;
+      const vm = perguntar(`  Valor estimado máximo em R$ mi (Enter = até o orçamento, ${orcamentoDe(mem, clube.id).toFixed(2)}; t = todos):`);
+      const valorMax = vm === 't' ? Infinity : Number(vm.replace(',', '.')) || orcamentoDe(mem, clube.id);
+      escolherDaLista(buscar(mem, clube.id, { grupo: GRUPOS.includes(g) ? g : undefined, idadeMax: idade, notaMin: nota, valorMax }, info.semana), info, mem);
+    } else if (v === 'o') {
+      const ids = mm.observados.get(clube.id) ?? [];
+      escolherDaLista(ids.map((id) => acharJogador(mem, id)).filter((j): j is Jogador => !!j).map((j) => ver(mem, clube.id, j, info.semana)), info, mem);
+    } else if (v === 'n') {
+      negs.forEach((n, i) => console.log(`    ${i + 1}) ${n.tipo === 'renovacao' ? 'Renovação' : 'Compra'}: ${nomeJogador(n.jogador)} · ${n.fase} · ${n.estado} · chance ${chanceDaNegociacao(mem, n).toFixed(0)}%`));
+      const k = negs.length ? escolher('  Número (Enter volta):', negs.length) : null;
+      if (k !== null) telaNegociacao(negs[k], mem);
+    } else if (v === 'p') {
+      props.forEach((p, i) => { const j = m.elencos[clube.id].find((x) => x.id === p.jogador); console.log(`    ${i + 1}) ${nome(p.comprador)}: R$ ${p.oferta.toFixed(2)} mi por ${j?.nome} (Valor R$ ${j?.valor.toFixed(2)} mi)${p.maior ? ' · clube maior: ele pode querer sair se recusar' : ''}`); });
+      const k = props.length ? escolher('  Número (Enter volta):', props.length) : null;
+      if (k === null) continue;
+      const r = perguntar('  a) aceitar  r) recusar  c) contraproposta:');
+      if (r === 'a') responder(mem, props[k], 'aceitar');
+      else if (r === 'r') responder(mem, props[k], 'recusar');
+      else if (r === 'c') { const x = Number(perguntar('  Valor pedido em R$ mi:').replace(',', '.')); if (x > 0) responder(mem, props[k], x); }
+      if (props[k].estado !== 'nova') console.log('  Resposta dada: o resultado chega no próximo ciclo.');
+    } else if (v === 'e') {
+      const el = [...m.elencos[clube.id]].sort((a, b) => GRUPOS.indexOf(grupoDe(a)) - GRUPOS.indexOf(grupoDe(b)) || b.nota - a.nota);
+      el.forEach((j, i) => console.log(`    ${String(i + 1).padStart(2)}) ${j.posicao.padEnd(5)} ${j.nome.padEnd(18)} ${String(j.idade).padStart(2)} anos · nota ${j.nota} · contrato ${j.contrato ?? '-'} · ${j.salario} mil · R$ ${j.valor.toFixed(2)} mi${mm.transferiveis.has(j.id) ? ' · TRANSFERÍVEL' : ''}${mm.querSair.has(j.id) ? ' · quer sair' : ''}`));
+      const k = escolher('  Número (Enter volta):', el.length);
+      if (k !== null) telaJogador(el[k], info, mem);
+    } else if (v === 'd') { menuDelegacao(); if (delegado.mercado) return; }
+  }
+}
+
 const controle: ControleJogador = {
   clube: clube.id,
   aoJogo(d, r) { ultimoDoClube = { d, r }; },
@@ -215,13 +334,12 @@ const controle: ControleJogador = {
     const capar = (d: { carga: Carga; foco: Foco }) => (CARGAS.indexOf(d.carga) > CARGAS.indexOf(limites.cargaMax) ? { ...d, carga: limites.cargaMax } : d);
     if (delegado.treino) { const d = capar(ia); return d === ia ? null : d; }
     const atual = ultimoTreino ?? ia;
-    console.log(`--- 3. Treino (ciclo ${ciclo}) · entrosamento da tática ${(progressoTatica(mem, clube.id) * 100).toFixed(0)}% · sugestão do auxiliar: ${ia.carga}, ${ia.foco} ---`);
+    console.log(`--- 4. Treino (ciclo ${ciclo}) · entrosamento da tática ${(progressoTatica(mem, clube.id) * 100).toFixed(0)}% · sugestão do auxiliar: ${ia.carga}, ${ia.foco} ---`);
     const v = perguntar(`  Carga 1) leve 2) normal 3) pesada e foco 1) tática 2) físico 3) técnico 4) bola parada 5) adversário, ex. "2 1" (Enter = ${atual.carga}, ${atual.foco}):`);
     if (v) {
       const [c, f] = v.split(/\s+/).map(Number);
       ultimoTreino = { carga: CARGAS[c - 1] ?? atual.carga, foco: FOCOS[f - 1] ?? atual.foco };
     }
-    console.log('--- 4. Mercado, contratos e comissão: com o diretor (manual na 8b) ---');
     return ultimoTreino ?? ia;
   },
   escalar(p, mem) {
@@ -306,6 +424,34 @@ const controle: ControleJogador = {
       }
     }
   },
+  mercado(info, mem) {
+    if (delegado.mercado) { if (!info.semJogo) console.log('--- 3. Mercado: com o diretor (delegado) ---'); return null; }
+    const mm = mem.mercado!;
+    if (info.semJogo && auto && !fila.length && !mm.avisos.length && !mm.propostas.some((p) => p.clube === clube.id && p.estado === 'nova')) return true;
+    if (info.semJogo) console.log(`
+=== Ano ${m.ano} · semana ${info.semana} (sem jogo) ===`);
+    telaMercado(info, mem);
+    return true;
+  },
+  proposta(p) {
+    const c = m.clubes.find((x) => x.id === p.clube);
+    console.log(`\n=== Proposta${p.motivo === 'ultimo-b' ? ' (26 semanas sem proposta)' : ''}: ${c?.nome ?? p.clube} (${COMP[p.liga] ?? p.liga}, Reputação ${p.reputacao}) · Confiança inicial ${p.confianca} · sua Reputação ${tecnico.reputacao} ===`);
+    if (p.empregado) console.log(`  Você é o técnico do ${clube.nomeCurto}; aceitar = sair sem multa (o clube pega um técnico livre).`);
+    const v = perguntar(`  Aceitar? s/n (Enter = ${p.empregado ? 'recusar' : 'aceitar'}):`).toLowerCase();
+    const ok = v ? v === 's' : !p.empregado;
+    if (ok && c) {
+      clube = c;
+      titulares = null; padrao = {}; ultimoTreino = null; ultimoDoClube = null; avisadoLivre = false;
+      console.log(`${tecnico.nome} assume o ${c.nome}.`);
+    }
+    return ok;
+  },
+  renovacao(p) {
+    console.log(`\n=== Contrato com o ${clube.nomeCurto} no fim: a diretoria quer renovar (Confiança ${p.confianca.toFixed(0)}, meta: ${p.avaliacao}) ===`);
+    const v = perguntar(`  Anos (1 a 3; 0 = recusar e ficar livre; Enter = ${p.anos}):`);
+    const n = Number(v);
+    return v && Number.isInteger(n) && n >= 0 && n <= 3 ? n : null;
+  },
   meta(metas) {
     console.log(`\n=== Ano ${m.ano}: metas da diretoria ===`);
     const niveis = (Object.keys(metas) as NivelMeta[]).filter((n) => metas[n]);
@@ -321,7 +467,8 @@ m.eventos = { modelos: base.eventos, imprensa: base.imprensa, cenario: 'avancar'
 for (let ano = 1; ano <= anosMax; ano++) {
   logLido = 0;
   rodada.length = 0;
-  const t = jogarAno(m, semente, true, (j) => { if (j.dia !== rodada[rodada.length - 1]?.dia) rodada.length = 0; rodada.push(j); });
+  const t = jogarAno(m, semente, true, (j) => {
+    if (tecnico.clubeId === null && !avisadoLivre) { avisadoLivre = true; console.log(`\n*** ${tecnico.nome} saiu do ${clube.nomeCurto} (semana ${Math.ceil(j.dia / 7)}). Reputação ${tecnico.reputacao}. O mundo segue; propostas chegam a cada 4 semanas. ***`); } if (j.dia !== rodada[rodada.length - 1]?.dia) rodada.length = 0; rodada.push(j); });
   telaResultado();
   despejarLog(t.memoria);
   const liga = Object.keys(t.tabelas).find((l) => t.tabelas[l].some((x) => x.clube === clube.id))!;
@@ -330,10 +477,10 @@ for (let ano = 1; ano <= anosMax; ano++) {
   tab.forEach((x, i) => console.log(`  ${String(i + 1).padStart(2)}. ${nome(x.clube).padEnd(16)} ${String(x.pontos).padStart(3)} pts${x.clube === clube.id ? '  <<' : ''}`));
   const r = virar(m, t);
   console.log('  Campeões: ' + Object.entries(r.campeoes).map(([k, c]) => `${COMP[k] ?? k}: ${nome(c)}`).join(' · '));
-  if (tecnico.clubeId !== clube.id) {
-    const s = t.memoria.dir.saidas.filter((x) => x.clube === clube.id).pop();
-    console.log(`\n${tecnico.nome} não é mais o técnico do ${clube.nomeCurto} (${s?.motivo ?? 'saída'}). Propostas de outros clubes chegam na 8b3. Fim da carreira.`);
-    break;
+  if (tecnico.clubeId === null) {
+    avisadoLivre = true;
+    const h = t.memoria.carreira?.historico.filter((x) => x.fato !== 'proposta recusada').pop();
+    console.log(`\n${tecnico.nome} está sem clube (saiu do ${nome(h?.clube ?? clube.id)}: ${h?.fato ?? 'saída'}). Reputação ${tecnico.reputacao}. Propostas a cada 4 semanas; sem nenhuma em 26, o último da Série B oferece.`);
   }
   if (perguntar('\nEnter = próxima temporada; s = sair:') === 's') break;
 }

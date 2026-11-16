@@ -112,16 +112,19 @@ export interface ImprensaMundo {
 
 export function criarImprensa(mem: Memoria, dados: DadosEventos): ImprensaMundo {
   const I: ImprensaMundo = { dados, clubes: new Map(), tabela: new Map(), historico: [], semSistema: {}, escolhas: {}, log: [] };
-  for (const c of dados.clubes) {
-    const g = mem.gestao.get(c);
-    if (!g) continue;
-    I.clubes.set(c, {
-      fila: [], cadeias: [], marcas: new Map(), promessas: [], usados: new Map(), salarioAvisado: false, ultimoTema: null, pontos: [], ultimo: null, jogos: 0, jogosAno: 0,
-      ciclo: 0, ultimaColetiva: -9, tons: [], jogosDesdeFala: 99, noticias: new Map(), impeto: 0, impetoRival: 0, fatos: [], respostaRival: null,
-      desmentidos: [], lesionados: new Set(), transf: mem.mercado?.transferencias.length ?? 0, titulo: null, competicoes: new Map(), tecnico: g.tecnico.nome, tecnicoDesde: -999, ano: zero(),
-    });
-  }
+  for (const c of dados.clubes) incluirNaImprensa(mem, c, I);
   return I;
+}
+
+/** Clube passa a receber eventos e imprensa (8b3: o técnico do jogador assume outro clube). */
+export function incluirNaImprensa(mem: Memoria, c: string, I: ImprensaMundo | null = mem.imprensa): void {
+  const g = mem.gestao.get(c);
+  if (!g || !I || I.clubes.has(c)) return;
+  I.clubes.set(c, {
+    fila: [], cadeias: [], marcas: new Map(), promessas: [], usados: new Map(), salarioAvisado: false, ultimoTema: null, pontos: [], ultimo: null, jogos: 0, jogosAno: 0,
+    ciclo: 0, ultimaColetiva: -9, tons: [], jogosDesdeFala: 99, noticias: new Map(), impeto: 0, impetoRival: 0, fatos: [], respostaRival: null,
+    desmentidos: [], lesionados: new Set(), transf: mem.mercado?.transferencias.length ?? 0, titulo: null, competicoes: new Map(), tecnico: g.tecnico.nome, tecnicoDesde: -999, ano: zero(),
+  });
 }
 
 /** Marcas e promessas no alvo do Respaldo (GDD-gestao 3). */

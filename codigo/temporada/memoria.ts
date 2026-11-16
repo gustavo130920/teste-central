@@ -23,7 +23,7 @@ import { criarConta } from '../gestao/financas.ts';
 import type { EstadoMercado } from './mercado.ts';
 import { quedaQuerSair, registrarNota } from './mercado.ts';
 import type { FichaDiretoria, Financeiro } from '../gestao/diretoria.ts';
-import type { ContagemDiretoria, EstadoDiretoria } from './diretoria.ts';
+import type { ContagemDiretoria, EstadoCarreira, EstadoDiretoria } from './diretoria.ts';
 import { criarDiretorias, novaContagemDiretoria } from './diretoria.ts';
 import type { ImprensaMundo } from './eventos.ts';
 import { respaldoDasMarcas } from './eventos.ts';
@@ -105,6 +105,8 @@ export interface Memoria {
   dirTransf: number;
   /** Etapa 4, 7ª fatia: eventos e imprensa (null sem `eventos` na temporada). */
   imprensa: ImprensaMundo | null;
+  /** 8b3: vagas, propostas e histórico do técnico do jogador (criado sob demanda). */
+  carreira?: EstadoCarreira;
 }
 
 /** Jogos e treino do clube nos períodos de 4 e de 13 semanas e no ano. */
