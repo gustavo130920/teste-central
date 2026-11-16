@@ -8,11 +8,16 @@ import { cicloEmPassos, copasDe, tabelaAtual } from '../../../temporada/temporad
 import type { DiaEmPassos, JogoDisputado, RespostaDoDia } from '../../../temporada/temporada.ts';
 import type { AoVivo, Contexto } from './partida.ts';
 import { ajusteDaResposta, aplicarPreJogo, fimJogo, infoJogoTela, novasLinhas, novoAoVivo, parcial, preJogo, telaPausa } from './partida.ts';
+import { estadoBase, dispensarJovem, pedirEmprestimo, subirJovem } from '../../../temporada/baseJogador.ts';
+import { amortizarDivida, estadoComercial, estrutura, iniciarObra, limiteEmprestimo, mesDoDia, mudarPrecos, tomarEmprestimo, COMERCIAL_JOGADOR } from '../../../temporada/comercialJogador.ts';
+import { ver } from '../../../temporada/mercadoJogador.ts';
+import { MERCADO, janelaDaSemana, semanaDoDia } from '../../../gestao/mercado.ts';
+import { custoObra } from '../../../gestao/financas.ts';
 import { estadoTatica, progressoDe } from '../../../temporada/taticaJogador.ts';
 import { assumirClube, criarTecnicoDoJogador } from '../../../temporada/jogador.ts';
 import { carregar, salvar } from '../../../temporada/salvamento.ts';
 import { comprimir, descomprimir, apagar, gravar, ler, listar } from './saves.ts';
-import type { Carga, Foco, ElencoTela, TreinoTela, ClubeResumo, Etapa, EscolhaPreJogo, RespostaPausa, InfoSlot, JogoTela, NovoJogo, Painel, Pedido, Pedidos, Resposta, ResumoVirada, Slot, TipoPedido } from './protocolo.ts';
+import type { BaseTela, ComercialTela, PedidoBase, PedidoComercial, ResultadoBase, ResultadoComercial, Carga, Foco, ElencoTela, TreinoTela, ClubeResumo, Etapa, EscolhaPreJogo, RespostaPausa, InfoSlot, JogoTela, NovoJogo, Painel, Pedido, Pedidos, Resposta, ResumoVirada, Slot, TipoPedido } from './protocolo.ts';
 
 const arquivos = import.meta.glob('../../../gerado/*.json', { eager: true, import: 'default' }) as Record<string, unknown>;
 /** Base nova a cada jogo: a carreira muda elencos e fichas (o mundo não copia tudo). */
@@ -24,7 +29,7 @@ const novaBase = () => montarBase(<T,>(arq: string): T => {
 const base = novaBase();
 
 /** O que o save da web guarda além do mundo. */
-interface ExtraWeb { semente: number; clubeTela: string; treino?: { carga: Carga; foco: Foco } | null }
+interface ExtraWeb { semente: number; clubeTela: string; treino?: { carga: Carga; foco: Foco } | null; base?: { manual: boolean; idadeMinima: number | null }; comercial?: boolean }
 
 let m: Mundo | null = null;
 let extra: ExtraWeb = { semente: 0, clubeTela: '' };
@@ -95,6 +100,9 @@ function avancar(): Promise<Etapa> {
   J.aoJogo = (d, r) => { if (ciclo?.aoVivo) ciclo.aoVivo.final = { d, r }; };
   // Treino (5d3a): plano fixo do jogador, ou o auxiliar decide (null).
   J.treino = () => extra.treino ?? null;
+  // Base e comercial (5d3b1): manual quando o jogador escolheu; senão a IA (com idade mínima na base delegada).
+  J.base = () => (extra.base?.manual ? 'manual' : extra.base?.idadeMinima ? { idadeMinima: extra.base.idadeMinima } : null);
+  J.comercial = () => (extra.comercial ? 'manual' : null);
   ciclo = { it: cicloEmPassos(s, { jogador: J, interativo: true }), aoVivo: null };
   return conduzir(undefined);
 }
@@ -240,6 +248,71 @@ function definirTreino(p: { carga: Carga; foco: Foco } | null): TreinoTela {
   return treinoTela(w);
 }
 
+// ---------- Base e comercial (5d3b1) ----------
+function baseTela(w: Mundo): BaseTela {
+  const s = w.emAndamento!;
+  const mem = s.memoria;
+  const id = extra.clubeTela;
+  const st = estadoBase(mem, id);
+  const jovens = [...(mem.base.get(id) ?? [])].sort((a, b) => b.nota - a.nota).map((j) => {
+    const v = ver(mem, id, j, semanaDoDia(s.dia));
+    return { id: j.id, nome: j.nome, posicao: j.posicao, idade: j.idade, nota: j.nota, pot: v.pot ? [v.pot.min, v.pot.max] as [number, number] : null, perfil: j.perfilJovem, emprestimoPedido: st.pedidos.includes(j.id) };
+  });
+  const avisos = [...st.avisos];
+  st.avisos = [];
+  return { manual: extra.base?.manual ?? false, idadeMinima: extra.base?.idadeMinima ?? null, janela: janelaDaSemana(semanaDoDia(s.dia)) !== null, elenco: mem.elencos[id].length, elencoMax: MERCADO.elenco.max, jovens, avisos };
+}
+
+function agirBase(p: PedidoBase): ResultadoBase {
+  const w = exigir();
+  const s = w.emAndamento!;
+  const id = extra.clubeTela;
+  let erro: string | null = null;
+  if (p.acao === 'modo') extra.base = { manual: p.manual, idadeMinima: p.manual ? null : p.idadeMinima ?? null };
+  else if (!w.tecnicos.some((t) => t.humano && t.clubeId === id)) erro = 'Sem clube.';
+  else if (p.acao === 'subir') erro = subirJovem(s.memoria, id, p.id);
+  else if (p.acao === 'dispensar') erro = dispensarJovem(s.memoria, id, p.id);
+  else erro = pedirEmprestimo(s.memoria, id, p.id, s.dia);
+  return { erro, tela: baseTela(w) };
+}
+
+function comercialTela(w: Mundo): ComercialTela {
+  const s = w.emAndamento!;
+  const mem = s.memoria;
+  const id = extra.clubeTela;
+  const c = mem.financas.get(id);
+  if (!c) throw new Error('Este clube não tem contas (só os 30 brasileiros).');
+  const st = estadoComercial(mem, id);
+  const mes = mesDoDia(s.dia);
+  const L = COMERCIAL_JOGADOR.preco;
+  const obra = (tipo: 'ct' | 'base') => { const e = estrutura(mem, id, tipo); return { tipo, nivel: e.nivel, obraAte: e.obra, custo: e.obra === null ? custoObra(e.nivel + 1) : null }; };
+  const avisos = [...st.avisos];
+  st.avisos = [];
+  return {
+    manual: extra.comercial ?? false, mes, podeMudarPreco: st.mesPreco !== mes, caixa: c.caixa, divida: c.divida, banco: c.banco, cabeMais: limiteEmprestimo(c),
+    humor: mem.humor.get(id) ?? 50, ingresso: c.ingresso, ingressoRef: c.ingressoRef, mensalidade: c.mensalidade, mensalidadeRef: c.mensalidadeRef, socios: Math.round(c.socios),
+    precoMin: L.min, precoMax: L.max, obras: [obra('ct'), obra('base')], cotas: c.cotas.map((x) => ({ tipo: x.tipo, marca: x.marca, valor: x.valor, ate: x.ate })), avisos,
+  };
+}
+
+function agirComercial(p: PedidoComercial): ResultadoComercial {
+  const w = exigir();
+  const s = w.emAndamento!;
+  const id = extra.clubeTela;
+  let erro: string | null = null;
+  if (p.acao === 'modo') {
+    extra.comercial = p.manual;
+    // Voltar à IA já devolve os preços (o ciclo seguinte também faz isso).
+    if (!p.manual) { const st = estadoComercial(s.memoria, id); st.manual = false; const c = s.memoria.financas.get(id); if (c) { c.precoManual = false; c.ingresso = c.ingressoRef; } }
+  } else if (!w.tecnicos.some((t) => t.humano && t.clubeId === id)) erro = 'Sem clube.';
+  else if (!extra.comercial) erro = 'Assuma o comercial ("Eu cuido") para agir.';
+  else if (p.acao === 'precos') erro = mudarPrecos(s.memoria, id, s.dia, p);
+  else if (p.acao === 'emprestimo') erro = tomarEmprestimo(s.memoria, id, p.valor);
+  else if (p.acao === 'amortizar') erro = amortizarDivida(s.memoria, id, p.valor);
+  else if (p.acao === 'obra') erro = iniciarObra(s.memoria, id, p.tipo, s.dia);
+  return { erro, tela: comercialTela(w) };
+}
+
 // ---------- Saves ----------
 function infoDe(w: Mundo, slot: Slot, tamanho: number, criado = new Date().toISOString()): InfoSlot {
   const t = tecnicoDoJogador(w);
@@ -308,6 +381,10 @@ const tratar: Tratador = {
   elenco: () => elencoTela(exigir()),
   treino: () => treinoTela(exigir()),
   definirTreino: (p) => definirTreino(p),
+  base: () => baseTela(exigir()),
+  agirBase: (p) => agirBase(p),
+  comercial: () => comercialTela(exigir()),
+  agirComercial: (p) => agirComercial(p),
   slots: () => listar(),
   salvar: (slot) => salvarEm(slot),
   carregar: (slot) => carregarSlot(slot),

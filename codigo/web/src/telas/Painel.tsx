@@ -178,7 +178,7 @@ export function Painel({ painel: p, aoAvancar, aoGestao, ocupado, aoSair, erro }
         </div>
         <div className="flex items-center gap-2">
           <p className="mr-2 text-right leading-tight"><span className="block text-xs text-musgo">Ano {p.ano}</span><span className="text-lg font-semibold">Semana {Math.min(p.semana, 52)}</span></p>
-          <Button variant="secondary" disabled={!p.tecnico.clube} onClick={aoGestao}>Elenco e treino <Kbd keys={['E']} className="ml-1" /></Button>
+          <Button variant="secondary" disabled={!p.tecnico.clube} onClick={aoGestao}>Gestão <Kbd keys={['E']} className="ml-1" /></Button>
           <Button variant="secondary" onClick={() => setSalvando(true)}>Salvar <Kbd keys={['S']} className="ml-1" /></Button>
           <Button variant="ghost" onClick={aoSair}>Início</Button>
         </div>

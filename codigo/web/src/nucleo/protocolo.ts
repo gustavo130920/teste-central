@@ -128,6 +128,56 @@ export interface TreinoTela {
   taticas: TaticaTreino[];
 }
 
+// ---------- Base e comercial (5d3b1) ----------
+
+export interface JovemBase { id: string; nome: string; posicao: string; idade: number; nota: number; pot: [number, number] | null; perfil: string | null; emprestimoPedido: boolean }
+export interface BaseTela {
+  /** true: o jogador cuida da base; false: o coordenador sobe como a IA. */
+  manual: boolean;
+  /** Delegada: o coordenador só sobe quem tem esta idade ou mais (null = sem limite). */
+  idadeMinima: number | null;
+  janela: boolean;
+  elenco: number;
+  elencoMax: number;
+  jovens: JovemBase[];
+  avisos: string[];
+}
+export type PedidoBase =
+  | { acao: 'modo'; manual: boolean; idadeMinima?: number | null }
+  | { acao: 'subir' | 'dispensar' | 'emprestar'; id: string };
+
+export interface ObraTela { tipo: 'ct' | 'base'; nivel: number; obraAte: number | null; custo: number | null }
+export interface CotaTela { tipo: string; marca: string; valor: number; ate: number }
+export interface ComercialTela {
+  manual: boolean;
+  mes: number;
+  podeMudarPreco: boolean;
+  caixa: number;
+  divida: number;
+  banco: number;
+  cabeMais: number;
+  humor: number;
+  ingresso: number;
+  ingressoRef: number;
+  mensalidade: number;
+  mensalidadeRef: number;
+  socios: number;
+  precoMin: number;
+  precoMax: number;
+  obras: ObraTela[];
+  cotas: CotaTela[];
+  avisos: string[];
+}
+export type PedidoComercial =
+  | { acao: 'modo'; manual: boolean }
+  | { acao: 'precos'; ingresso?: number; mensalidade?: number }
+  | { acao: 'emprestimo' | 'amortizar'; valor: number }
+  | { acao: 'obra'; tipo: 'ct' | 'base' };
+
+/** Resultado de uma ação: o texto de erro (null = feito) e a tela nova. */
+export interface ResultadoBase { erro: string | null; tela: BaseTela }
+export interface ResultadoComercial { erro: string | null; tela: ComercialTela }
+
 export interface NovoJogo { clube: string; nome: string; origem: Origem; semente: number }
 
 // ---------- Partida ao vivo (5d2) ----------
@@ -251,6 +301,10 @@ export interface Pedidos {
   painel: { pede: void; volta: Painel | null };
   elenco: { pede: void; volta: ElencoTela };
   treino: { pede: void; volta: TreinoTela };
+  base: { pede: void; volta: BaseTela };
+  agirBase: { pede: PedidoBase; volta: ResultadoBase };
+  comercial: { pede: void; volta: ComercialTela };
+  agirComercial: { pede: PedidoComercial; volta: ResultadoComercial };
   definirTreino: { pede: { carga: Carga; foco: Foco } | null; volta: TreinoTela };
   slots: { pede: void; volta: InfoSlot[] };
   salvar: { pede: Slot; volta: InfoSlot };
