@@ -165,9 +165,19 @@ export function Gestao({ dia, aoVoltar }: { dia: number; aoVoltar: () => void })
         <h1 className="text-2xl font-bold" tabIndex={-1}>Gestão</h1>
         <Button variant="ghost" onClick={aoVoltar}>Voltar ao painel</Button>
       </header>
-      <div role="tablist" aria-label="Áreas" className="mt-4 flex gap-2">
+      <div role="tablist" aria-label="Áreas" className="mt-4 flex flex-wrap gap-2" onKeyDown={(ev) => {
+        // Padrão ARIA de abas: setas, Home e End trocam a aba e levam o foco.
+        const abas = ['elenco', 'treino', 'mercado', 'base', 'comercial', 'diretoria'] as const;
+        const i = abas.indexOf(aba);
+        const j = ev.key === 'ArrowRight' ? (i + 1) % abas.length : ev.key === 'ArrowLeft' ? (i + abas.length - 1) % abas.length : ev.key === 'Home' ? 0 : ev.key === 'End' ? abas.length - 1 : -1;
+        if (j < 0) return;
+        ev.preventDefault();
+        setAba(abas[j]);
+        const lista = ev.currentTarget;
+        setTimeout(() => lista.querySelectorAll<HTMLElement>('[role=tab]')[j]?.focus(), 0);
+      }}>
         {(['elenco', 'treino', 'mercado', 'base', 'comercial', 'diretoria'] as const).map((a) => (
-          <button key={a} role="tab" type="button" aria-selected={aba === a} onClick={() => setAba(a)}
+          <button key={a} role="tab" type="button" tabIndex={aba === a ? 0 : -1} aria-selected={aba === a} onClick={() => setAba(a)}
             className={cn('rounded-md border px-4 py-1.5 text-sm', aba === a ? 'border-led bg-led/15 font-semibold text-led' : 'border-linha hover:bg-faixa')}>{{ elenco: 'Elenco', treino: 'Treino', mercado: 'Mercado', base: 'Base', comercial: 'Comercial', diretoria: 'Diretoria' }[a]}</button>
         ))}
       </div>

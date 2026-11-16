@@ -73,7 +73,7 @@ export default function App() {
     : (tela === 'partida' || tela === 'fim') && aoVivo ? `${aoVivo.nomes[aoVivo.jogo.mandante]} x ${aoVivo.nomes[aoVivo.jogo.visitante]}, Central do Técnico` : 'Central do Técnico'; }, [tela, painel, aoVivo]);
 
   return (
-    <div ref={raiz}>
+    <main ref={raiz}>
       {tela === 'inicio' && (
         <Inicio erro={erro} aoNovo={() => ir('escolha')}
           aoCarregar={(s: Slot) => executar(() => pedir('carregar', s), () => setPilha(['painel']))} />
@@ -95,6 +95,6 @@ export default function App() {
       )}
       {decisao && <Decisao d={decisao} ocupado={ocupado} erro={erro} aoResponder={(r: RespostaDecisao) => etapa(() => pedir('decidir', r), false)} />}
       {tela === 'fim' && aoVivo?.fim && <Fim v={aoVivo} aoVoltar={() => setPilha(['painel'])} />}
-    </div>
+    </main>
   );
 }
