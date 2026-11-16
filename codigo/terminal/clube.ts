@@ -4,7 +4,10 @@
 // --auto: Enter em tudo (teste rápido). --entradas: respostas na ordem, separadas por ";" (depois delas, Enter).
 import { readSync } from 'node:fs';
 import type { Jogador, PadraoTime } from '../motor/dados.ts';
-import type { AjustePausa, Lance, ResultadoPartida, TipoBatedor, Tom } from '../motor/tipos.ts';
+import type { AjustePausa, Lance, ResultadoPartida, TimeEmCampo, TipoBatedor, Tom } from '../motor/tipos.ts';
+import { PLANO_B } from '../motor/parametros.ts';
+import { custoRadical } from '../motor/pausas.ts';
+import { chaveTatica } from '../gestao/treino.ts';
 import { narrar } from '../narracao/narrar.ts';
 import type { Carga, Foco } from '../gestao/treino.ts';
 import type { NivelMeta } from '../gestao/diretoria.ts';
@@ -12,7 +15,7 @@ import type { Memoria } from '../temporada/memoria.ts';
 import type { JogoDisputado } from '../temporada/temporada.ts';
 import type { Area, ControleJogador, FichaTecnico, InfoJogo, Origem } from '../temporada/jogador.ts';
 import { AREAS, ATALHOS, TECNICO_JOGADOR, assumirClube, criarTecnicoDoJogador, progressoTatica } from '../temporada/jogador.ts';
-import type { EstadoTaticaJogador } from '../temporada/taticaJogador.ts';
+import type { EstadoTaticaJogador, TaticaSalva } from '../temporada/taticaJogador.ts';
 import { TATICA_JOGADOR, apagarTatica, definirBatedor, definirInstrucao, estadoTatica, mudarEstiloFormacao, novaTatica, opcoesNaVaga, planoDoJogo, progressoDe, taticaAtiva, usarTatica } from '../temporada/taticaJogador.ts';
 import { previaDoOnze } from '../motor/escalacao.ts';
 import { criarMundo, jogarAno, virar } from '../temporada/virada.ts';
@@ -156,6 +159,46 @@ const PADRAO: [keyof PadraoTime, string[]][] = [
   ['linha', ['Alta', 'Média', 'Baixa']], ['pressao', ['Alta', 'Média', 'Baixa']], ['largura', ['Aberta', 'Normal', 'Estreita']],
   ['ritmo', ['Rápido', 'Normal', 'Lento']], ['saida', ['Curta', 'Mista', 'Direta']],
 ];
+
+// ---------- Tática na pausa (5b2) ----------
+/** Instrução individual na pausa (leve): vale para a vaga atual; com troca de formação, o motor confere de novo. */
+function pausaInstrucao(t: TimeEmCampo, aj: AjustePausa): void {
+  const campo = t.escalados.filter((e) => e !== t.goleiro);
+  const x: TaticaSalva = { nome: '', estilo: aj.estilo ?? t.estilo.nome, formacaoComBola: t.formacaoComBola, formacaoSemBola: t.formacaoSemBola, padrao: { ...t.padrao, ...aj.padrao }, instrucoes: {}, batedores: {} };
+  campo.forEach((e, k) => console.log(`    ${String(k + 1).padStart(2)}) ${e.vaga.padEnd(5)} ${e.j.nome.padEnd(18)} com: ${(e.instrCom?.nome ?? '-').padEnd(28)} sem: ${e.instrSem?.nome ?? '-'}`));
+  const k = escolher('  Jogador (número; Enter volta):', campo.length);
+  if (k === null) return;
+  const e = campo[k];
+  const f = escolher('  1) com a bola  2) sem a bola:', 2);
+  if (f === null) return;
+  const fase = f === 0 ? 'Com' : 'Sem';
+  const ops = opcoesNaVaga(e.j, e.vaga, fase, m.tatica, x);
+  ops.forEach((o, i) => console.log(`    ${String(i + 1).padStart(2)}) ${o.ins.nome.padEnd(28)} encaixe ${pct(o.encaixe)}${o.contraria ? ' · contraria o estilo (× 0,9)' : o.ins.combina.includes(x.estilo) ? ' · combina (× 1,05)' : ''}${o.auxiliar ? ' · auxiliar' : ''}${o.ins.exige ? ` · exige ${o.ins.exige}` : ''}`));
+  const y = escolher('  Instrução (número; Enter = auxiliar escolhe). Ajuste leve, sem perda:', ops.length);
+  aj.instrucoes = { ...aj.instrucoes, [e.j.id]: { ...aj.instrucoes?.[e.j.id], [fase]: y === null ? null : ops[y].ins.id } };
+}
+/** Plano B (GDD 7): uma tática salva entra inteira; com entrosamento 85%+ a perda radical cai pela metade. */
+function planoB(mem: Memoria, t: TimeEmCampo, aj: AjustePausa): void {
+  const est = estadoTatica(mem, clube.id);
+  const agora = `${t.estilo.nome}|${t.formacaoComBola}|${t.formacaoSemBola}`;
+  const ops = est.taticas.filter((x) => chaveTatica(x) !== agora);
+  if (!ops.length) { console.log('  Nenhuma outra tática salva (crie em s) táticas salvas, antes do jogo).'); return; }
+  const entr = (x: TaticaSalva): number => t.apoio.taticas?.[chaveTatica(x)] ?? PLANO_B.minimo;
+  const perda = 1 - custoRadical(t);
+  ops.forEach((x, i) => {
+    const e = entr(x);
+    const pb = e >= PLANO_B.treinada;
+    console.log(`    ${i + 1}) ${x.nome.padEnd(10)} ${x.estilo}, ${x.formacaoComBola} / ${x.formacaoSemBola} · entrosamento ${pct(e)} · ${pb ? `Plano B, perde ${pct(perda * PLANO_B.fator)}` : `sem treino suficiente, perde ${pct(perda)}`} por 15 minutos`);
+  });
+  const k = escolher('  Tática (número; Enter volta):', ops.length);
+  if (k === null) return;
+  const x = ops[k];
+  const estilo = m.tatica.estilos.find((s2) => s2.nome === x.estilo)!;
+  const instrucoes: NonNullable<AjustePausa['instrucoes']> = {};
+  for (const e of t.escalados) instrucoes[e.j.id] = { Com: x.instrucoes[e.j.id]?.Com ?? null, Sem: x.instrucoes[e.j.id]?.Sem ?? null };
+  Object.assign(aj, { estilo: x.estilo === t.estilo.nome ? undefined : x.estilo, formacaoComBola: x.formacaoComBola, formacaoSemBola: x.formacaoSemBola, padrao: { ...estilo.padrao, ...x.padrao }, instrucoes, batedores: { ...x.batedores } });
+  if (!aj.estilo) delete aj.estilo;
+}
 
 // ---------- Tática profunda (5b1) ----------
 const BATEDORES: Record<TipoBatedor, string> = { escanteio: 'escanteio', falta: 'falta', penalti: 'pênalti' };
@@ -505,7 +548,7 @@ const controle: ControleJogador = {
     console.log('--- 6. Jogar ---');
     return { ...(titulares ? { titulares } : {}), ...planoDoJogo(mem, clube.id) };
   },
-  pausa(info, jogo) {
+  pausa(info, jogo, mem) {
     if (delegado.tatica) return null;
     if (auto && !fila.length) return null; // teste rápido: o auxiliar decide, como a IA
     const i = info.lado;
@@ -519,11 +562,13 @@ const controle: ControleJogador = {
     for (const x of info.extras) console.log(`  Analista: ${x}`);
     info.sugestoes.forEach((s, k) => console.log(`  Auxiliar ${k + 1}) ${s}`));
     const aj: AjustePausa = {};
-    const resumo = (): string => [aj.estilo ? `estilo ${aj.estilo}` : '', ...Object.entries(aj.padrao ?? {}).map(([k, v]) => `${k} ${v}`),
+    const resumo = (): string => [aj.estilo ? `estilo ${aj.estilo}` : '', aj.formacaoComBola ? `formação ${aj.formacaoComBola} / ${aj.formacaoSemBola}` : '', aj.batedores ? 'batedores da tática' : '',
+      ...Object.entries(aj.instrucoes ?? {}).map(([id, x]) => `${nomeJogador(id)}: ${[x.Com, x.Sem].map((v) => (v === undefined ? '' : v === null ? 'auxiliar' : m.tatica.instrucoes.find((ins) => ins.id === v)?.nome ?? v)).filter(Boolean).join(' / ')}`),
+      ...Object.entries(aj.padrao ?? {}).map(([k, v]) => `${k} ${v}`),
       ...(aj.trocas ?? []).map(([s, e]) => `${nomeJogador(s)} por ${nomeJogador(e)}`), aj.fala ? `fala ${aj.fala}` : '', ...(aj.sugestoes ?? []).map((k) => `sugestão ${k + 1}`)].filter(Boolean).join(', ') || 'nada';
     for (;;) {
-      console.log(`  Estilo ${aj.estilo ?? t.estilo.nome} · ${PADRAO.map(([k]) => `${k} ${aj.padrao?.[k] ?? t.padrao[k]}`).join(' · ')} · trocas restantes ${info.trocasRestantes - (aj.trocas?.length ?? 0)} · a aplicar: ${resumo()}`);
-      const v = perguntar(`  s) sugestões  p) instruções do time  e) estilo  t) troca${info.intervalo ? '  f) fala' : ''}  a) auxiliar decide  Enter = seguir:`);
+      console.log(`  Estilo ${aj.estilo ?? t.estilo.nome} · ${aj.formacaoComBola ?? t.formacaoComBola} / ${aj.formacaoSemBola ?? t.formacaoSemBola} · ${PADRAO.map(([k]) => `${k} ${aj.padrao?.[k] ?? t.padrao[k]}`).join(' · ')} · trocas restantes ${info.trocasRestantes - (aj.trocas?.length ?? 0)} · a aplicar: ${resumo()}`);
+      const v = perguntar(`  s) sugestões  p) instruções do time  e) estilo  o) formação  i) instrução individual  b) Plano B  t) troca${info.intervalo ? '  f) fala' : ''}  a) auxiliar decide  Enter = seguir:`);
       if (!v) return aj;
       if (v === 'a') return null;
       if (v === 's') {
@@ -539,6 +584,17 @@ const controle: ControleJogador = {
         console.log(`  Estilos: ${lista(estilos)}`);
         const x = escolher(`  Estilo (Enter = ${t.estilo.nome}; troca é radical, perde de 10% a 40% de eficácia por 15 minutos):`, estilos.length);
         if (x !== null) aj.estilo = estilos[x] === t.estilo.nome ? undefined : estilos[x];
+      } else if (v === 'o') {
+        console.log(`  Formações: ${lista(formacoes)}`);
+        const c = escolher(`  Com a bola (Enter = ${aj.formacaoComBola ?? t.formacaoComBola}; troca é radical, como a de estilo):`, formacoes.length);
+        const x = escolher(`  Sem a bola (Enter = ${aj.formacaoSemBola ?? t.formacaoSemBola}):`, formacoes.length);
+        const com = c === null ? aj.formacaoComBola ?? t.formacaoComBola : formacoes[c];
+        const sem = x === null ? aj.formacaoSemBola ?? t.formacaoSemBola : formacoes[x];
+        if (com === t.formacaoComBola && sem === t.formacaoSemBola) { delete aj.formacaoComBola; delete aj.formacaoSemBola; } else Object.assign(aj, { formacaoComBola: com, formacaoSemBola: sem });
+      } else if (v === 'i') {
+        pausaInstrucao(t, aj);
+      } else if (v === 'b') {
+        planoB(mem, t, aj);
       } else if (v === 't') {
         const campo = t.escalados;
         campo.forEach((e, k) => console.log(`    ${String(k + 1).padStart(2)}) ${e.vaga.padEnd(4)} ${e.j.nome.padEnd(18)} energia ${Math.round(e.energia)}${e.amarelos ? ' · amarelo' : ''}${e.lesao ? ` · lesão ${e.lesao}` : ''}`));

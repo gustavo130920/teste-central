@@ -3,12 +3,12 @@ import { bonusGol, calcularConfronto, pontosElo } from './confronto.ts';
 import { bonusEnsaiada, chanceBolaChega, chanceDueloAereo, chancePenalti, chancesCartao, escolherBatedor, limiarDividida, melhoresNoAlto } from './bolaparada.ts';
 import { chanceDisputa, chanceGol, lerAtributo, limitar, modTraco, penaFirula, pesoDefeito, valorAcao, valorJogador } from './disputa.ts';
 import { aplicarImpeto, atualizarMods, calcularMod, decairImpeto, gastoBloco, mudarMoral, temQualidade } from './clima.ts';
-import { escolherAsDuas, montarTime, prepararTime, retirarExpulso, retirarLesionado, substituir } from './escalacao.ts';
+import { escolherAsDuas, montarTime, prepararTime, retirarExpulso, retirarLesionado, substituir, trocarFormacao } from './escalacao.ts';
 import { chanceLesao, chanceLesaoFaltaDura, semanasFora, sortearGravidade } from './lesoes.ts';
 import { chanceForaDePosicao } from './plano.ts';
 import type { Decisao } from './pausas.ts';
-import { atacarBrecha, custoRadical, decidirReacao, escolherTrocas, falaDoJogador, falaIntervalo, mudarDegrau, reverterEixo, tonsCertos } from './pausas.ts';
-import { GDD, PROVISORIO, RESPALDO } from './parametros.ts';
+import { atacarBrecha, custoTroca, decidirReacao, escolherTrocas, falaDoJogador, falaIntervalo, mudarDegrau, reverterEixo, tonsCertos } from './pausas.ts';
+import { GDD, PLANO_B, PROVISORIO, RESPALDO } from './parametros.ts';
 import { NOTA, fecharNotas, pontuarLance } from './notas.ts';
 import type { Acao, AcaoDisputa, TipoChute } from './parametros.ts';
 import { criarRng, semearDeTexto } from './rng.ts';
@@ -883,20 +883,47 @@ function aplicarDoJogador(st: Estado, i: 0 | 1, intervalo: boolean, aj: AjustePa
     if (s.ajuste?.trocas) trocas.push(...s.ajuste.trocas);
     if (s.ajuste?.fala && !fala) fala = s.ajuste.fala;
   }
-  const radical = !!aj.estilo && aj.estilo !== t.estilo.nome && st.tatica.estilos.some((e) => e.nome === aj.estilo);
-  if (radical) {
+  const trocaEstilo = !!aj.estilo && aj.estilo !== t.estilo.nome && st.tatica.estilos.some((e) => e.nome === aj.estilo);
+  const chaveAntes = `${t.estilo.nome}|${t.formacaoComBola}|${t.formacaoSemBola}`;
+  if (trocaEstilo) {
     t.estilo = st.tatica.estilos.find((e) => e.nome === aj.estilo)!;
     t.padrao = { ...t.estilo.padrao };
     feitos.push(`estilo ${t.estilo.nome}`);
   }
   if (aj.padrao) t.padrao = { ...t.padrao, ...aj.padrao };
+  // Formação (5b2): radical como o estilo. Com o padrão já novo, para a exigência das instruções.
+  const trocaFormacao = (!!aj.formacaoComBola || !!aj.formacaoSemBola)
+    && trocarFormacao(t, st.tatica, aj.formacaoComBola ?? t.formacaoComBola, aj.formacaoSemBola ?? t.formacaoSemBola);
+  if (trocaFormacao) feitos.push(`formação ${t.formacaoComBola} / ${t.formacaoSemBola}`);
+  const radical = trocaEstilo || trocaFormacao;
+  // Instruções individuais (5b2): ajuste leve; null devolve a escolha ao melhor encaixe.
+  if (aj.instrucoes) {
+    const ins = structuredClone(t.instrucoes ?? {});
+    for (const [id, x] of Object.entries(aj.instrucoes)) {
+      const y = { ...ins[id] };
+      for (const f of ['Com', 'Sem'] as const) if (f in x) { if (x[f]) y[f] = x[f]!; else delete y[f]; }
+      if (y.Com || y.Sem) ins[id] = y; else delete ins[id];
+    }
+    t.instrucoes = ins;
+  }
+  if (aj.batedores) t.batedores = { ...aj.batedores };
   if (radical) for (const e of t.escalados) escolherAsDuas(e, t, st.tatica);
-  const ref = radical ? t.estilo.padrao : antes;
+  else if (aj.instrucoes) for (const e of t.escalados) if (e.j.id in aj.instrucoes) escolherAsDuas(e, t, st.tatica);
+  if (aj.instrucoes) for (const e of t.escalados) if (e.j.id in aj.instrucoes) feitos.push(`${e.j.nome}: ${e.instrCom?.nome ?? '-'} / ${e.instrSem?.nome ?? '-'}`);
+  const ref = trocaEstilo ? t.estilo.padrao : antes;
   const mudadas = (Object.keys(t.padrao) as (keyof typeof t.padrao)[]).filter((k) => t.padrao[k] !== ref[k]);
   for (const k of mudadas) feitos.push(`${k} ${t.padrao[k]}`);
   // Instrução individual vinda de sugestão do auxiliar: ajuste leve.
   for (const k of aj.sugestoes ?? []) if (sug[k]?.decisao?.texto.includes(":")) feitos.push(sug[k].decisao!.texto);
-  t.custoAjuste = radical ? custoRadical(t) : mudadas.length >= 2 ? 0.9 : 1;
+  t.custoAjuste = mudadas.length >= 2 ? 0.9 : 1;
+  if (radical) {
+    // Plano B (GDD 7): o motor passa a usar o entrosamento da tática nova; já treinada (0,85+) corta a perda pela metade.
+    const chave = `${t.estilo.nome}|${t.formacaoComBola}|${t.formacaoSemBola}`;
+    const mapa = t.apoio.taticas;
+    if (mapa && chave !== chaveAntes) t.apoio.entrosamento = mapa[chave] ?? PLANO_B.minimo;
+    t.custoAjuste = custoTroca(t, mapa?.[chave]);
+    if ((mapa?.[chave] ?? 0) >= PLANO_B.treinada) feitos.push(`Plano B (entrosamento ${Math.round(mapa![chave] * 100)}%)`);
+  }
   if ((radical || mudadas.length) && t.apoio.respaldo < RESPALDO.fraco) t.ajusteFraco = true;
   for (const [saiId, entraId] of trocas) {
     if (t.trocas >= GDD.substituicoes) break;

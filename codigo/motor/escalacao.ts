@@ -112,7 +112,7 @@ export function montarTime(indice: 0 | 1, ent: EntradaTime, tatica: Tatica, rng:
   const goleiro = escalados.find((e) => e.j.posicao === 'GOL');
   if (!goleiro) throw new Error(`${ent.clube.id}: sem goleiro`);
   const t: TimeEmCampo = {
-    indice, clube: ent.clube, tecnico: ent.tecnico, estilo, padrao, notas: notasEfetivas(estilo, padrao), escalados, goleiro,
+    indice, clube: ent.clube, tecnico: ent.tecnico, estilo, formacaoComBola: ent.tecnico.formacaoComBola, formacaoSemBola: ent.tecnico.formacaoSemBola, padrao, notas: notasEfetivas(estilo, padrao), escalados, goleiro,
     participantes: [...escalados], banco: escolherBanco(ent.elenco, onze, com), trocas: 0, tecnicoExpulso: false, emCasa: indice === 0, condicao: ent.condicao, moral: ent.moral, ajusteFraco: false, custoAjuste: 1, casa: ent.fatorCasa, vaia: ent.vaia,
     presencaCom: [], presencaContra: [], efeitos: calcularEfeitos([], [], padrao),
     confronto: { pressaoSaida: 0, velocidadeCostas: 0, criacaoBloco: 0, viabilidade: 0 },
@@ -123,6 +123,48 @@ export function montarTime(indice: 0 | 1, ent: EntradaTime, tatica: Tatica, rng:
   for (const e of escalados) escolherAsDuas(e, t, tatica);
   prepararTime(t, tatica);
   return t;
+}
+
+/**
+ * Troca de formação na pausa (5b2): os mesmos jogadores em campo vão para as vagas da formação nova,
+ * o goleiro no gol e os de linha pela maior nota na vaga (como na escalação); com um a menos, sobra a vaga mais difícil.
+ * Instruções refeitas para as vagas novas. Devolve false se a formação não existe ou não mudou.
+ */
+export function trocarFormacao(t: TimeEmCampo, tatica: Tatica, comBola: string, semBola: string): boolean {
+  const fc = tatica.formacoes.find((x) => x.nome === comBola);
+  const fs = tatica.formacoes.find((x) => x.nome === semBola);
+  if (!fc || !fs || (comBola === t.formacaoComBola && semBola === t.formacaoSemBola)) return false;
+  const pecas = fc.pecas;
+  const vagas: (Escalado | null)[] = pecas.map(() => null);
+  const gol = pecas.findIndex((p) => p.posicao === 'GOL');
+  vagas[gol] = t.goleiro;
+  const pares: { v: number; n: number; e: Escalado }[] = [];
+  pecas.forEach((p, v) => {
+    if (v === gol) return;
+    for (const e of t.escalados) {
+      if (e === t.goleiro) continue;
+      const n = notaNaVaga(e.j, p.posicao);
+      if (n !== null) pares.push({ v, n, e });
+    }
+  });
+  pares.sort((a, b) => b.n - a.n || a.v - b.v || a.e.j.id.localeCompare(b.e.j.id));
+  const usados = new Set<Escalado>([t.goleiro]);
+  for (const { v, e } of pares) {
+    if (vagas[v] || usados.has(e)) continue;
+    vagas[v] = e;
+    usados.add(e);
+  }
+  const ocupadas = pecas.flatMap((p, v) => (vagas[v] ? [{ e: vagas[v]!, p }] : []));
+  const ligacao = ligarSemBola(ocupadas.map(({ p }) => ({ pos: p.posicao, zona: zonaDeCodigo(p.zona) })), fs.pecas);
+  ocupadas.forEach(({ e, p }, i) => {
+    e.vaga = p.posicao;
+    e.zonaCom = zonaDeCodigo(p.zona);
+    e.zonaSemBase = zonaDeCodigo(fs.pecas[ligacao[i]].zona);
+  });
+  t.formacaoComBola = comBola;
+  t.formacaoSemBola = semBola;
+  for (const e of t.escalados) escolherAsDuas(e, t, tatica);
+  return true;
 }
 
 function novoEscalado(j: Jogador, time: 0 | 1, vaga: Posicao, zonaCom: number, zonaSemBase: number, rng: Rng, classico: boolean, condicao?: Record<string, number>, moral?: Record<string, number>): Escalado {

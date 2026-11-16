@@ -77,6 +77,9 @@ export interface TimeEmCampo {
   clube: Clube;
   tecnico: Tecnico;
   estilo: Estilo;
+  /** Formações em uso (mudam na pausa, 5b2). */
+  formacaoComBola: string;
+  formacaoSemBola: string;
   padrao: PadraoTime;
   notas: Record<NotaEstilo, number>;
   escalados: Escalado[];
@@ -164,6 +167,8 @@ export interface ApoioComissao {
   quedaMoral: number;
   /** Respaldo do elenco, 0 a 100 (GDD 7). */
   respaldo: number;
+  /** Entrosamento de cada tática treinada, pela chave estilo|com|sem (Plano B, 5b2); sem ele, a troca radical mantém o entrosamento. */
+  taticas?: Record<string, number>;
 }
 export interface EntradaPartida {
   mandante: EntradaTime;
@@ -178,7 +183,20 @@ export interface EntradaPartida {
 
 export type Tom = 'Cobrar' | 'Acalmar' | 'Elogiar';
 /** O que o jogador muda na pausa. `padrao` traz os valores novos; `sugestoes`, os índices aplicados. */
-export interface AjustePausa { padrao?: Partial<PadraoTime>; estilo?: string; trocas?: [string, string][]; fala?: Tom; sugestoes?: number[] }
+export interface AjustePausa {
+  padrao?: Partial<PadraoTime>;
+  estilo?: string;
+  /** Troca de formação (5b2): radical, como a de estilo. */
+  formacaoComBola?: string;
+  formacaoSemBola?: string;
+  /** Instrução individual por jogador e fase (5b2, ajuste leve); null = o auxiliar escolhe pelo melhor encaixe. */
+  instrucoes?: Record<string, { Com?: string | null; Sem?: string | null }>;
+  /** Batedores novos (Plano B de uma tática salva); substituem todos. */
+  batedores?: Batedores;
+  trocas?: [string, string][];
+  fala?: Tom;
+  sugestoes?: number[];
+}
 export interface InfoPausa {
   minuto: number;
   intervalo: boolean;

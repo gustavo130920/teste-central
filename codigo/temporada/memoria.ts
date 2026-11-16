@@ -116,6 +116,8 @@ export interface Memoria {
   comercialJogador?: EstadoComercialJogador;
   /** Táticas salvas do clube do jogador (5b1). */
   taticaJogador?: EstadoTaticaJogador;
+  /** Semanas de entrosamento por estilo (Plano B, 5b2); vazio sem dados da Gestão. */
+  semanasEstilo: Map<string, number>;
 }
 
 /** Jogos e treino do clube nos períodos de 4 e de 13 semanas e no ano. */
@@ -197,6 +199,7 @@ export function criarMemoria(elencos: Record<string, Jogador[]>, clubes: string[
     }
   }
   const mem: Memoria = {
+    semanasEstilo: new Map((dados?.tatica.estilos ?? []).map((e) => [e.nome, e.entrosamentoSemanas || 1])),
     elencos: copia, jogadores, ultimoJogo: new Map(), leituras: new Map(), gestao,
     contagem: { lesoesTreino: 0, recaidas: 0, sequelas: 0, suspensoes: 0, semGoleiro: 0, baseEmergencia: 0, adaptacoes: 0, leiturasCertas: 0, leiturasErradas: 0 },
     evolucao, base, periodo, nomes: dados?.nomes ?? new Nomes(Object.values(copia).flat()), seq: 0,
@@ -320,7 +323,7 @@ export function prepararJogo(m: Memoria, clube: string, dia: number, competicao:
   const condicao = Object.fromEntries(disponiveis.map((j) => [j.id, Math.round(m.jogadores.get(j.id)!.condicao)]));
   const poupados = disponiveis.filter((j) => condicao[j.id] < ENTRE_JOGOS.poupar).map((j) => j.id);
   const moral = g ? Object.fromEntries(disponiveis.map((j) => [j.id, Math.round(m.jogadores.get(j.id)!.moral)])) : undefined;
-  return { elenco: disponiveis, condicao, poupados, desfalques: { lesionados, suspensos, poupados }, apoio: g ? apoioDoJogo(g) : undefined, moral };
+  return { elenco: disponiveis, condicao, poupados, desfalques: { lesionados, suspensos, poupados }, apoio: g ? apoioDoJogo(g, m.semanasEstilo) : undefined, moral };
 }
 
 /** Ciclo (GDD-gestao 3): moral volta para 55, queda por Minutos e Respaldo anda 20% até o alvo. */
@@ -343,11 +346,14 @@ function cicloDeMoral(m: Memoria, g: ClubeGestao, elenco: Jogador[], clube: stri
 }
 
 /** O que a comissão e o último ciclo de treino entregam ao motor. */
-function apoioDoJogo(g: ClubeGestao): ApoioComissao {
+function apoioDoJogo(g: ClubeGestao, semanasEstilo: Map<string, number>): ApoioComissao {
   const base = apoioDaComissao(g.comissao);
   const foco = bonusDoFoco(g.treino, g.comissao);
   const progresso = g.treino.taticas.get(chaveTatica(g.tecnico))?.progresso ?? 0;
-  return { ...base, ensaiada: base.ensaiada + foco.ensaiadaExtra, menosGasto: foco.menosGasto, entrosamento: entrosamento(progresso, g.semanas), respaldo: g.respaldo };
+  // Plano B (5b2): entrosamento de cada tática treinada, com as semanas do estilo dela.
+  const taticas: Record<string, number> = {};
+  for (const [k, x] of g.treino.taticas) taticas[k] = entrosamento(x.progresso, semanasEstilo.get(k.split('|')[0]) ?? g.semanas);
+  return { ...base, ensaiada: base.ensaiada + foco.ensaiadaExtra, menosGasto: foco.menosGasto, entrosamento: entrosamento(progresso, g.semanas), respaldo: g.respaldo, taticas };
 }
 
 /** Depois do jogo: condição de quem jogou, cartões, suspensões cumpridas, lesões do motor e recaída. */

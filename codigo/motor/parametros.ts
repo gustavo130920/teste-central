@@ -258,3 +258,6 @@ export const APOIO_NEUTRO = {
 
 /** GDD 7: Respaldo do elenco nos ajustes da pausa. Decisão do Gustavo (13/11/2026): eficácia das instruções do time × 0,9 no bloco seguinte. */
 export const RESPALDO = { fraco: 40, recusa: 15, fator: 0.9 } as const;
+
+/** Plano B (GDD 7; GDD-gestao 2): tática já treinada (entrosamento 0,85+) corta a perda radical pela metade; sem treino, o mínimo da seção 4. */
+export const PLANO_B = { treinada: 0.85, fator: 0.5, minimo: 0.7 } as const;

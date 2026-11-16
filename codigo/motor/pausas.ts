@@ -2,7 +2,7 @@
 import type { PadraoTime, Tatica } from './dados.ts';
 import { cartaoEmRisco } from './bolaparada.ts';
 import { limitar } from './disputa.ts';
-import { PROVISORIO } from './parametros.ts';
+import { PLANO_B, PROVISORIO } from './parametros.ts';
 import { eficaciaFinal, opcoesInstrucao, zonasDaEtiqueta } from './plano.ts';
 import type { Rng } from './rng.ts';
 import type { Escalado, TimeEmCampo, Tom } from './tipos.ts';
@@ -116,3 +116,7 @@ export function falaDoJogador(t: TimeEmCampo, tom: Tom, dif: number, impeto: num
 
 /** Eficácia no bloco seguinte a uma troca de estilo: perde 25% − (Ajuste nas Pausas − 10) × 1,5%, de 10% a 40% (GDD 7). */
 export const custoRadical = (t: TimeEmCampo): number => 1 - limitar(25 - (atributoTecnico(t, 'Ajuste nas Pausas') - 10) * 1.5, 10, 40) / 100;
+
+/** Plano B (GDD 7): troca radical para uma tática já treinada (entrosamento 0,85+) perde só metade. */
+export const custoTroca = (t: TimeEmCampo, entrosamentoNova: number | undefined): number =>
+  (entrosamentoNova ?? 0) >= PLANO_B.treinada ? 1 - (1 - custoRadical(t)) * PLANO_B.fator : custoRadical(t);
