@@ -1,6 +1,7 @@
 // Copas (etapa 3, 3ª fatia): Copa do Brasil, Libertadores, Champions e Mundial (PLANEJAMENTO, competições; GDD-gestao 1).
 // Cada copa gera os jogos do dia conforme os resultados anteriores; o laço da temporada joga e devolve o resultado.
 import type { Rng } from '../motor/rng.ts';
+import { criarRng } from '../motor/rng.ts';
 import type { Jogo } from './calendario.ts';
 import { CALENDARIO, tabelaPontosCorridos } from './calendario.ts';
 import type { Linha, ResultadoJogo } from './classificacao.ts';
@@ -53,10 +54,35 @@ export interface Confronto {
   jogos: number;
 }
 
+/**
+ * Estado de uma copa só com dados (5d1): o que muda durante o ano fica aqui, para salvar a qualquer ciclo.
+ * `montarCopa` põe as funções em volta; `restaurarCopas` remonta as copas de um save.
+ */
+export interface EstadoCopa {
+  id: string;
+  tipo: 'copa-do-brasil' | 'libertadores' | 'champions' | 'mundial';
+  confrontos: Confronto[];
+  /** Fases já sorteadas. */
+  geradas: string[];
+  /** Copa do Brasil. */
+  clubes?: string[];
+  folgas?: string[];
+  /** Libertadores: grupos, resultados, rodadas e a semente do desempate (um sorteio novo a cada atualização). */
+  grupos?: { clubes: string[]; tabela: Linha[] }[];
+  resultados?: ResultadoJogo[][];
+  tabelas?: [string, string][][][];
+  desempate?: number;
+  /** Champions: chave sorteada no início. */
+  chave?: string[];
+}
+
 export interface Copa {
   id: string;
   nome: string;
+  estado: EstadoCopa;
   jogosDoDia(dia: number, rng: Rng): JogoCopa[];
+  /** 5d1: jogos já definidos (fases sorteadas, grupos) do dia `desde` em diante, sem sortear nada (para a tela). */
+  previstos(desde: number): JogoCopa[];
   /** O jogo decide o confronto e o agregado está empatado: vai a pênaltis. */
   precisaPenaltis(j: JogoCopa, placar: [number, number]): boolean;
   registrar(j: JogoCopa, r: ResultadoJogo, penaltis: [number, number] | null): void;
@@ -85,13 +111,13 @@ interface Fase {
 }
 
 /** Mata-mata genérico: fase a fase, ida e volta ou jogo único; desempate por saldo agregado e pênaltis (PLANEJAMENTO). */
-function mataMata(id: string, competicao: string, fases: Fase[], extras: Partial<Copa> = {}): Copa & { vencedores(fase: string): string[] } {
-  const confrontos: Confronto[] = [];
-  const gerada = new Set<string>();
+function mataMata(est: EstadoCopa, competicao: string, fases: Fase[], extras: Partial<Copa> = {}): Copa & { vencedores(fase: string): string[] } {
+  const { id, confrontos } = est;
   const daFase = (f: string): Confronto[] => confrontos.filter((c) => c.fase === f);
   const copa = {
     id,
     nome: competicao,
+    estado: est,
     confrontos,
     vencedores: (f: string): string[] => daFase(f).map((c) => c.vencedor!),
     jogosDoDia(dia: number, rng: Rng): JogoCopa[] {
@@ -99,8 +125,8 @@ function mataMata(id: string, competicao: string, fases: Fase[], extras: Partial
       for (const f of fases) {
         const perna = f.semanas.findIndex((s) => diaDaSemana(s) === dia);
         if (perna < 0) continue;
-        if (!gerada.has(f.nome)) {
-          gerada.add(f.nome);
+        if (!est.geradas.includes(f.nome)) {
+          est.geradas.push(f.nome);
           const unico = f.semanas.length === 1;
           for (const [a, b] of f.sortear(rng)) {
             confrontos.push({ id: confrontos.length, fase: f.nome, a, b, unico, neutro: unico && !!f.neutroNaUltima, gols: [0, 0], penaltis: null, vencedor: null, jogos: 0 });
@@ -113,6 +139,24 @@ function mataMata(id: string, competicao: string, fases: Fase[], extras: Partial
             mandante: volta ? c.b : c.a, visitante: volta ? c.a : c.b,
           });
         }
+      }
+      return jogos;
+    },
+    previstos(desde: number): JogoCopa[] {
+      const jogos: JogoCopa[] = extras.previstos?.(desde) ?? [];
+      for (const f of fases) {
+        if (!est.geradas.includes(f.nome)) continue;
+        f.semanas.forEach((sem, perna) => {
+          const dia = diaDaSemana(sem);
+          if (dia < desde) return;
+          for (const c of daFase(f.nome)) {
+            const volta = perna === 1;
+            jogos.push({
+              competicao: id, rodada: 0, semana: sem, dia, fase: f.nome, perna: c.unico ? 0 : volta ? 2 : 1, neutro: c.neutro, confronto: c.id,
+              mandante: volta ? c.b : c.a, visitante: volta ? c.a : c.b,
+            });
+          }
+        });
       }
       return jogos;
     },
@@ -152,12 +196,20 @@ const pares = (clubes: string[]): [string, string][] => {
   return res;
 };
 
+const novoEstado = (id: string, tipo: EstadoCopa['tipo'], resto: Partial<EstadoCopa> = {}): EstadoCopa => ({ id, tipo, confrontos: [], geradas: [], ...resto });
+
 /** Copa do Brasil: 28 na 1ª fase em jogo único (mando sorteado), depois 16 em ida e volta com sorteio livre e mando do 2º jogo sorteado. */
 export function criarCopaDoBrasil(clubes: string[], folgas: string[]): Copa {
+  return montarCopa(novoEstado('copa-do-brasil', 'copa-do-brasil', { clubes: [...clubes], folgas: [...folgas] }), []);
+}
+
+function montarCopaDoBrasil(est: EstadoCopa): Copa {
   const d = DATAS_COPAS.copaDoBrasil;
+  const clubes = est.clubes!;
+  const folgas = est.folgas!;
   let copa: ReturnType<typeof mataMata>;
   const sorteioLivre = (anterior: string) => (rng: Rng) => pares(embaralhar(copa.vencedores(anterior), rng));
-  copa = mataMata('copa-do-brasil', 'Copa do Brasil', [
+  copa = mataMata(est, 'Copa do Brasil', [
     { nome: '1ª fase', semanas: [d.primeiraFase], sortear: (rng) => pares(embaralhar(clubes.filter((c) => !folgas.includes(c)), rng)) },
     { nome: 'Oitavas', semanas: [...d.oitavas], sortear: (rng) => pares(embaralhar([...copa.vencedores('1ª fase'), ...folgas], rng)) },
     { nome: 'Quartas', semanas: [...d.quartas], sortear: sorteioLivre('Oitavas') },
@@ -168,14 +220,24 @@ export function criarCopaDoBrasil(clubes: string[], folgas: string[]): Copa {
 }
 
 /** Libertadores: 4 grupos de 4, um clube de cada país; 2 por grupo; mata-mata cruzado, melhor campanha decide em casa. */
-export function criarLibertadores(porPais: string[][], rngSorteio: Rng, rngDesempate: () => Rng): Copa {
-  const d = DATAS_COPAS.libertadores;
+export function criarLibertadores(porPais: string[][], rngSorteio: Rng, sementeDesempate: number): Copa {
   const potes = porPais.map((p) => embaralhar(p, rngSorteio));
   const grupos = [0, 1, 2, 3].map((g) => ({ clubes: potes.map((p) => p[g]), tabela: [] as Linha[] }));
-  const resultados: ResultadoJogo[][] = grupos.map(() => []);
   const tabelas = grupos.map((g) => tabelaPontosCorridos(g.clubes, rngSorteio));
-  const atualizar = (): void => grupos.forEach((g, i) => { g.tabela = classificar(g.clubes, resultados[i], rngDesempate()); });
-  atualizar();
+  const est = novoEstado('libertadores', 'libertadores', { grupos, resultados: grupos.map(() => []), tabelas, desempate: sementeDesempate });
+  atualizarGrupos(est);
+  return montarCopa(est, []);
+}
+
+function atualizarGrupos(est: EstadoCopa): void {
+  est.grupos!.forEach((g, i) => { g.tabela = classificar(g.clubes, est.resultados![i], criarRng(est.desempate!)); });
+}
+
+function montarLibertadores(est: EstadoCopa): Copa {
+  const d = DATAS_COPAS.libertadores;
+  const grupos = est.grupos!;
+  const resultados = est.resultados!;
+  const tabelas = est.tabelas!;
   // Melhor campanha entre os 8 classificados: pontos, vitórias, saldo, gols pró (PROVISORIO: o resto como sorteio fixo).
   const campanha = (c: string): Linha => grupos.flatMap((g) => g.tabela).find((l) => l.clube === c)!;
   const melhor = (x: string, y: string): number => {
@@ -187,7 +249,7 @@ export function criarLibertadores(porPais: string[][], rngSorteio: Rng, rngDesem
   const ordenar = (x: string, y: string): [string, string] => (melhor(x, y) <= 0 ? [y, x] : [x, y]);
   const pos = (g: number, p: number): string => grupos[g].tabela[p].clube;
   let copa: ReturnType<typeof mataMata>;
-  copa = mataMata('libertadores', 'Libertadores', [
+  copa = mataMata(est, 'Libertadores', [
     { nome: 'Quartas', semanas: [...d.quartas], sortear: () => [ordenar(pos(0, 0), pos(1, 1)), ordenar(pos(1, 0), pos(0, 1)), ordenar(pos(2, 0), pos(3, 1)), ordenar(pos(3, 0), pos(2, 1))] },
     { nome: 'Semifinal', semanas: [...d.semi], sortear: () => { const v = copa.vencedores('Quartas'); return [ordenar(v[0], v[1]), ordenar(v[2], v[3])]; } },
     { nome: 'Final', semanas: [...d.final], sortear: () => { const v = copa.vencedores('Semifinal'); return [ordenar(v[0], v[1])]; } },
@@ -200,9 +262,14 @@ export function criarLibertadores(porPais: string[][], rngSorteio: Rng, rngDesem
         competicao: 'libertadores', rodada: r + 1, semana: d.grupos[r], dia, fase: `Grupo ${'ABCD'[g]}`, perna: 0 as const, neutro: false, confronto: null, mandante, visitante,
       })));
     },
+    previstos(desde: number): JogoCopa[] {
+      return d.grupos.flatMap((sem, r) => (diaDaSemana(sem) < desde ? [] : tabelas.flatMap((t, g) => t[r].map(([mandante, visitante]) => ({
+        competicao: 'libertadores', rodada: r + 1, semana: sem, dia: diaDaSemana(sem), fase: `Grupo ${'ABCD'[g]}`, perna: 0 as const, neutro: false, confronto: null, mandante, visitante,
+      })))));
+    },
     registrar(j: JogoCopa, r: ResultadoJogo): void {
       resultados[grupos.findIndex((g) => g.clubes.includes(j.mandante))].push(r);
-      atualizar();
+      atualizarGrupos(est);
     },
   });
   return copa;
@@ -210,11 +277,15 @@ export function criarLibertadores(porPais: string[][], rngSorteio: Rng, rngDesem
 
 /** Champions: só simulada, mata-mata em jogo único com chave sorteada no início; mando sorteado; final em campo neutro. */
 export function criarChampions(clubes: string[], rng: Rng): Copa {
+  return montarCopa(novoEstado('champions', 'champions', { chave: embaralhar(clubes, rng) }), []);
+}
+
+function montarChampions(est: EstadoCopa): Copa {
   const d = DATAS_COPAS.champions;
-  const chave = embaralhar(clubes, rng);
+  const chave = est.chave!;
   let copa: ReturnType<typeof mataMata>;
   const seguir = (anterior: string) => (r: Rng) => pares(copa.vencedores(anterior)).map(([a, b]) => (r.pct(50) ? [a, b] : [b, a]) as [string, string]);
-  copa = mataMata('champions', 'Champions', [
+  copa = mataMata(est, 'Champions', [
     { nome: 'Oitavas', semanas: [d.oitavas], sortear: (r) => pares(chave).map(([a, b]) => (r.pct(50) ? [a, b] : [b, a]) as [string, string]) },
     { nome: 'Quartas', semanas: [d.quartas], sortear: seguir('Oitavas') },
     { nome: 'Semifinal', semanas: [d.semi], sortear: seguir('Quartas') },
@@ -225,7 +296,28 @@ export function criarChampions(clubes: string[], rng: Rng): Copa {
 
 /** Mundial: campeão da Libertadores contra campeão da Champions, jogo único em campo neutro. */
 export function criarMundial(libertadores: Copa, champions: Copa): Copa {
-  return mataMata('mundial', 'Mundial', [
+  return montarCopa(novoEstado('mundial', 'mundial'), [libertadores, champions]);
+}
+
+function montarMundial(est: EstadoCopa, outras: Copa[]): Copa {
+  const libertadores = outras.find((c) => c.id === 'libertadores')!;
+  const champions = outras.find((c) => c.id === 'champions')!;
+  return mataMata(est, 'Mundial', [
     { nome: 'Final', semanas: [DATAS_COPAS.mundial], neutroNaUltima: true, sortear: () => [[libertadores.campeao()!, champions.campeao()!]] },
   ]);
+}
+
+/** Funções em volta do estado; o Mundial precisa da Libertadores e da Champions em `outras`. */
+export function montarCopa(est: EstadoCopa, outras: Copa[]): Copa {
+  if (est.tipo === 'copa-do-brasil') return montarCopaDoBrasil(est);
+  if (est.tipo === 'libertadores') return montarLibertadores(est);
+  if (est.tipo === 'champions') return montarChampions(est);
+  return montarMundial(est, outras);
+}
+
+/** Copas de um save, na ordem salva. */
+export function restaurarCopas(estados: EstadoCopa[]): Copa[] {
+  const copas: Copa[] = [];
+  for (const e of estados) copas.push(montarCopa(e, copas));
+  return copas;
 }

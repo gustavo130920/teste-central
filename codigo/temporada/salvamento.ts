@@ -1,4 +1,4 @@
-// Salvamento da carreira em JSON (etapa 5, fatia 5c): só na virada, entre temporadas.
+// Salvamento da carreira em JSON (etapa 5, fatia 5c; a qualquer ciclo desde a 5d1, com o ano em `emAndamento`).
 // O mundo é um grafo: o mesmo técnico, jogador ou conta aparece em vários lugares. O formato guarda cada objeto
 // compartilhado uma vez ($id) e as outras aparições como referência ($ref), para o carregado se comportar igual.
 // Map, Set, a classe Nomes e números não finitos ganham marcas próprias. Funções (o controle do jogador) ficam de fora.
@@ -43,7 +43,7 @@ export function codificar(raiz: unknown): Json {
     if (v === null || typeof v !== 'object') continue;
     const n = vezes.get(v) ?? 0;
     vezes.set(v, n + 1);
-    if (n === 0) pilha.push(...filhos(v, classeDe(v)));
+    if (n === 0) for (const f of filhos(v, classeDe(v))) pilha.push(f); // sem espalhar: arrays grandes estouram a pilha no navegador
   }
   // 2ª passada: só os compartilhados ganham $id.
   const ids = new Map<object, number>();

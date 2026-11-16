@@ -7,7 +7,8 @@ import { ANO1 } from './copas.ts';
 import type { Memoria } from './memoria.ts';
 import { ENTRE_JOGOS } from './memoria.ts';
 import type { Temporada } from './temporada.ts';
-import { LIGAS, simularTemporada } from './temporada.ts';
+import type { EstadoTemporada, JogoDisputado } from './temporada.ts';
+import { LIGAS, fecharTemporada, iniciarTemporada, jogarDia } from './temporada.ts';
 import { Nomes } from '../gestao/base.ts';
 import type { ResumoPessoas } from './pessoas.ts';
 import { viradaPessoas } from './pessoas.ts';
@@ -84,6 +85,8 @@ export interface Mundo {
   eventos?: DadosEventos;
   /** Etapa 4, 8ª fatia: clube do jogador. */
   jogador?: ControleJogador;
+  /** 5d1: ano jogado passo a passo (`iniciarAno`, `avancarCiclo`, `concluirAno`); vai no save. */
+  emAndamento?: EstadoTemporada;
 }
 
 export interface BaseMundo {
@@ -126,20 +129,38 @@ export function entradas(m: Mundo): Record<string, EntradaTime> {
   }));
 }
 
-export function jogarAno(m: Mundo, semente: number, adaptacao = true, aoJogar?: (j: import('./temporada.ts').JogoDisputado) => void): Temporada {
-  const t = simularTemporada({
+/** Começa o ano do mundo como máquina de estados (5d1): avance com `jogarDia`/`avancarCiclo` e encerre com `concluirAno`. */
+export function iniciarAno(m: Mundo, semente: number, adaptacao = true): EstadoTemporada {
+  m.semente = semente;
+  const s = iniciarTemporada({
     semente: semente * 1000 + m.ano, clubesPorLiga: m.clubesPorLiga, europeus: m.europeus, entradas: entradas(m), elencos: m.elencos, tatica: m.tatica,
-    libertadores: m.libertadores, folgasCopaDoBrasil: m.folgasCopaDoBrasil, memoria: m.memoria ?? undefined, adaptacao, comissoes: m.comissoes, nomes: m.nomes, comercial: m.comercial, diretoria: m.diretoria, tecnicos: m.tecnicos, ano: m.ano, eventos: m.eventos, jogador: m.jogador, aoJogar,
+    libertadores: m.libertadores, folgasCopaDoBrasil: m.folgasCopaDoBrasil, memoria: m.memoria ?? undefined, adaptacao, comissoes: m.comissoes, nomes: m.nomes, comercial: m.comercial, diretoria: m.diretoria, tecnicos: m.tecnicos, ano: m.ano, eventos: m.eventos, jogador: m.jogador,
     mercado: m.empresarios && m.comissoes ? {
       ano: m.ano, clubes: m.clubes, europeus: m.europeus, livres: m.livres, livreDesde: m.livreDesde, libertadores: m.libertadores.flat(),
       empresarios: m.empresarios, reduzidas: m.comercial?.reduzidas ?? [],
     } : undefined,
   });
+  // O ano fica no mundo (vai no save) e a memória do ano é a do mundo desde já.
+  m.emAndamento = s;
+  m.memoria = s.memoria;
+  m.elencos = s.memoria.elencos;
+  return s;
+}
+
+/** Fecha o ano em andamento e guarda a memória no mundo (antes de `virar`). */
+export function concluirAno(m: Mundo): Temporada {
+  const t = fecharTemporada(m.emAndamento!);
+  m.emAndamento = undefined;
   m.memoria = t.memoria;
   // A memória guarda os elencos vivos (evolução, subidas, aposentadorias).
   m.elencos = t.memoria.elencos;
-  m.semente = semente;
   return t;
+}
+
+export function jogarAno(m: Mundo, semente: number, adaptacao = true, aoJogar?: (j: JogoDisputado) => void): Temporada {
+  const s = iniciarAno(m, semente, adaptacao);
+  while (!s.fim) jogarDia(s, { jogador: m.jogador, aoJogar });
+  return concluirAno(m);
 }
 
 /** Vagas da Libertadores (PLANEJAMENTO): 4 por país; campeão da Libertadores, campeão da Copa do Brasil (Brasil), depois a liga. */

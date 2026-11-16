@@ -1,7 +1,7 @@
 // Uso: npm run clube -- [SEMENTE] [--auto] [--entradas "1;Fulano;2;;;"] [--anos N]
 // Carreira com o clube do jogador (etapa 4, 8ª fatia, partes 8a, 8b1, 8b2 e 8b3; etapa 5, 5a1 base, 5a2 comercial, 5b1 tática; GDD-gestao 1 e 8, GDD-motor 7). Leitura de teclado síncrona.
 // Enter em qualquer pergunta = "Avançar" (mantém o que está, ou deixa com a delegação).
-// --auto: Enter em tudo (teste rápido). --carregar arquivo: retoma um save. --salvar: salva em toda virada. --entradas: respostas na ordem, separadas por ";" (depois delas, Enter).
+// --auto: Enter em tudo (teste rápido). --carregar arquivo: retoma um save (da virada ou do meio do ano). --salvar-ciclo N: salva no ciclo N e sai. --salvar: salva em toda virada. --entradas: respostas na ordem, separadas por ";" (depois delas, Enter).
 import { mkdirSync, readFileSync, readSync, writeFileSync } from 'node:fs';
 import type { Jogador, PadraoTime } from '../motor/dados.ts';
 import type { AjustePausa, Lance, MarcacaoIndividual, ResultadoPartida, TimeEmCampo, TipoBatedor, Tom } from '../motor/tipos.ts';
@@ -19,7 +19,8 @@ import { AREAS, ATALHOS, TECNICO_JOGADOR, assumirClube, criarTecnicoDoJogador, p
 import type { EstadoTaticaJogador, TaticaSalva } from '../temporada/taticaJogador.ts';
 import { TATICA_JOGADOR, apagarTatica, definirBatedor, definirInstrucao, estadoTatica, mudarEstiloFormacao, novaTatica, opcoesNaVaga, planoDoJogo, progressoDe, taticaAtiva, usarTatica } from '../temporada/taticaJogador.ts';
 import { previaDoOnze } from '../motor/escalacao.ts';
-import { criarMundo, jogarAno, virar } from '../temporada/virada.ts';
+import { concluirAno, criarMundo, iniciarAno, virar } from '../temporada/virada.ts';
+import { avancarCiclo } from '../temporada/temporada.ts';
 import type { Papel } from '../gestao/mercado.ts';
 import { MERCADO, grupoDe, semanaDoDia } from '../gestao/mercado.ts';
 import { FINANCAS } from '../gestao/financas.ts';
@@ -43,10 +44,12 @@ let anosMax = Infinity;
 let semente = 2026;
 let arquivoSave: string | null = null;
 const salvarSempre = args.includes('--salvar'); // teste: salva em toda virada, sem perguntar
+let salvarNoCiclo = -1; // 5d1, teste: --salvar-ciclo N salva depois do ciclo N do ano e sai
 for (let i = 0; i < args.length; i++) {
   if (args[i] === '--carregar') arquivoSave = args[++i] ?? null;
   else if (args[i] === '--entradas') fila.push(...(args[++i] ?? '').split(';'));
   else if (args[i] === '--anos') anosMax = Number(args[++i]);
+  else if (args[i] === '--salvar-ciclo') salvarNoCiclo = Number(args[++i]);
   else if (/^\d+$/.test(args[i])) semente = Number(args[i]);
 }
 
@@ -727,8 +730,21 @@ m.eventos = { modelos: base.eventos, imprensa: base.imprensa, cenario: 'avancar'
 for (let ano = 1; ano <= anosMax; ano++) {
   logLido = 0;
   rodada.length = 0;
-  const t = jogarAno(m, semente, true, (j) => {
-    if (tecnico.clubeId === null && !avisadoLivre) { avisadoLivre = true; console.log(`\n*** ${tecnico.nome} saiu do ${clube.nomeCurto} (semana ${Math.ceil(j.dia / 7)}). Reputação ${tecnico.reputacao}. O mundo segue; propostas chegam a cada 4 semanas. ***`); } if (j.dia !== rodada[rodada.length - 1]?.dia) rodada.length = 0; rodada.push(j); });
+  // 5d1: o ano roda ciclo a ciclo (máquina de estados); um save do meio do ano continua de onde parou.
+  const s = m.emAndamento ?? iniciarAno(m, semente, true);
+  const ganchos = { jogador: m.jogador, aoJogar: (j: JogoDisputado) => {
+    if (tecnico.clubeId === null && !avisadoLivre) { avisadoLivre = true; console.log(`\n*** ${tecnico.nome} saiu do ${clube.nomeCurto} (semana ${Math.ceil(j.dia / 7)}). Reputação ${tecnico.reputacao}. O mundo segue; propostas chegam a cada 4 semanas. ***`); } if (j.dia !== rodada[rodada.length - 1]?.dia) rodada.length = 0; rodada.push(j); } };
+  for (let ciclo = 1; !s.fim; ciclo++) {
+    avancarCiclo(s, ganchos);
+    if (ciclo === salvarNoCiclo) {
+      mkdirSync('saves', { recursive: true });
+      const arq = `saves/${clube.id}-ano${m.ano}-dia${s.dia - 1}.json`;
+      writeFileSync(arq, salvar<ExtraClube>(m, { clubeTela: clube.id, clubeJogador: controle.clube, semente, delegado, limites }));
+      console.log(`  Salvo no ciclo ${ciclo} em ${arq}.`);
+      process.exit(0);
+    }
+  }
+  const t = concluirAno(m);
   telaResultado();
   despejarLog(t.memoria);
   const liga = Object.keys(t.tabelas).find((l) => t.tabelas[l].some((x) => x.clube === clube.id))!;

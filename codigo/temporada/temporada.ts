@@ -9,8 +9,8 @@ import type { Jogo } from './calendario.ts';
 import { jogosDaLiga } from './calendario.ts';
 import type { Linha, ResultadoJogo } from './classificacao.ts';
 import { classificar } from './classificacao.ts';
-import type { Copa, JogoCopa } from './copas.ts';
-import { ANO1, criarChampions, criarCopaDoBrasil, criarLibertadores, criarMundial } from './copas.ts';
+import type { Copa, EstadoCopa, JogoCopa } from './copas.ts';
+import { ANO1, criarChampions, criarCopaDoBrasil, criarLibertadores, criarMundial, restaurarCopas } from './copas.ts';
 import { adaptar, lerJogo } from './adaptacao.ts';
 import type { Desfalques, Memoria } from './memoria.ts';
 import { criarMemoria, prepararJogo, registrarJogo } from './memoria.ts';
@@ -101,13 +101,49 @@ export interface EntradaTemporada {
   jogador?: ControleJogador;
 }
 
-export function simularTemporada(e: EntradaTemporada): Temporada {
+/** Ganchos da temporada: funções, fora do estado salvo. */
+export interface Ganchos { jogador?: ControleJogador; aoJogar?: (j: JogoDisputado) => void }
+
+/**
+ * Temporada em andamento (5d1): só dados, para salvar a qualquer ciclo. O laço avança um dia por vez (`jogarDia`)
+ * ou um ciclo do clube do jogador (`avancarCiclo`); `fecharTemporada` encerra. As copas ficam como estado
+ * (`EstadoCopa`) e as funções delas são remontadas na hora (`copasDe`).
+ */
+export interface EstadoTemporada {
+  e: Omit<EntradaTemporada, 'jogador' | 'aoJogar'>;
+  dasLigas: Jogo[];
+  copas: EstadoCopa[];
+  jogos: JogoDisputado[];
+  memoria: Memoria;
+  ctx: Omit<CtxDiretoria, 'jogador'>;
+  /** Próximo dia a jogar. */
+  dia: number;
+  ultimoDia: number;
+  /** 8b2: semana sem jogo do clube do jogador também é um ciclo do mercado (pré-temporada e pausas). */
+  ultimoMercado: number;
+  /** Último dia em que o clube do jogador jogou (fim do ciclo). */
+  ultimoJogoJogador: number;
+  com: { gestao: boolean; mercado: boolean; diretoria: boolean; imprensa: boolean };
+  fim: boolean;
+  fechada: boolean;
+}
+
+const COPAS = new WeakMap<EstadoCopa[], Copa[]>();
+/** Copas com as funções, montadas uma vez por estado (também depois de carregar um save). */
+export function copasDe(s: EstadoTemporada): Copa[] {
+  let c = COPAS.get(s.copas);
+  if (!c) { c = restaurarCopas(s.copas); COPAS.set(s.copas, c); }
+  return c;
+}
+
+const rngDeTemp = (s: EstadoTemporada, x: string) => criarRng(semearDeTexto(`${s.e.semente}-${x}`));
+
+export function iniciarTemporada(e: EntradaTemporada): EstadoTemporada {
   const ligas = Object.keys(e.clubesPorLiga);
   const rngDe = (s: string) => criarRng(semearDeTexto(`${e.semente}-${s}`));
   const dasLigas = ligas.flatMap((liga) => jogosDaLiga(liga, e.clubesPorLiga[liga], rngDe(`tabela-${liga}`)));
   const memoria = e.memoria ?? criarMemoria(e.elencos, [...ligas.flatMap((l) => e.clubesPorLiga[l]), ...(e.europeus ?? [])],
     e.comissoes ? { comissoes: e.comissoes, entradas: e.entradas, tatica: e.tatica, nomes: e.nomes, comercial: e.comercial, diretoria: e.diretoria } : undefined);
-  const ligaDe = (id: string): string[] => ligas.map((l) => e.clubesPorLiga[l]).find((cs) => cs.includes(id)) ?? [];
   const comGestao = memoria.gestao.size > 0;
   if (comGestao && e.mercado) {
     if (memoria.mercado) atualizarContexto(memoria.mercado, e.mercado);
@@ -117,7 +153,7 @@ export function simularTemporada(e: EntradaTemporada): Temporada {
   const comDiretoria = memoria.diretoria.size > 0;
   if (e.eventos && comDiretoria && !memoria.imprensa) memoria.imprensa = criarImprensa(memoria, e.eventos);
   const comImprensa = !!memoria.imprensa;
-  const ctxDir: CtxDiretoria = { ano: e.ano ?? 1, dia: 1, tecnicos: e.tecnicos ?? [], entradas: e.entradas, tatica: e.tatica, clubesPorLiga: e.clubesPorLiga, jogador: e.jogador };
+  const ctx: Omit<CtxDiretoria, 'jogador'> = { ano: e.ano ?? 1, dia: 1, tecnicos: e.tecnicos ?? [], entradas: e.entradas, tatica: e.tatica, clubesPorLiga: e.clubesPorLiga };
   // Paciência pela Reputação do técnico do jogador, só ao criar a memória (8ª fatia).
   const J = e.jogador;
   if (J && !e.memoria) {
@@ -125,6 +161,37 @@ export function simularTemporada(e: EntradaTemporada): Temporada {
     const ent = e.entradas[J.clube];
     if (st && ent?.tecnico.humano) st.confianca = confiancaInicial(ent.tecnico, ent.clube);
   }
+  const copas: Copa[] = [];
+  if (e.europeus) {
+    const brasileiros = [...(e.clubesPorLiga['serie-a'] ?? []), ...(e.clubesPorLiga['serie-b'] ?? [])];
+    const lib = ANO1.libertadores;
+    const vagas = e.libertadores ?? [lib.brasil, lib.argentina, lib.colombia, lib.chile];
+    const libertadores = criarLibertadores(vagas, rngDe('sorteio-libertadores'), semearDeTexto(`${e.semente}-desempate-libertadores`));
+    const champions = criarChampions(e.europeus, rngDe('sorteio-champions'));
+    copas.push(criarCopaDoBrasil(brasileiros, e.folgasCopaDoBrasil ?? ANO1.folgasCopaDoBrasil), libertadores, champions, criarMundial(libertadores, champions));
+  }
+  const { jogador: _j, aoJogar: _a, ...dados } = e;
+  const s: EstadoTemporada = {
+    e: dados, dasLigas, copas: copas.map((c) => c.estado), jogos: [], memoria, ctx, dia: 1,
+    ultimoDia: Math.max(...dasLigas.map((j) => j.dia), 52 * 7), ultimoMercado: 0, ultimoJogoJogador: 0,
+    com: { gestao: comGestao, mercado: comMercado, diretoria: comDiretoria, imprensa: comImprensa }, fim: false, fechada: false,
+  };
+  COPAS.set(s.copas, copas);
+  return s;
+}
+
+/** Joga o dia `s.dia` (jogos, ciclos da gestão e fechamentos) e passa para o seguinte. Devolve os jogos do dia. */
+export function jogarDia(s: EstadoTemporada, g: Ganchos = {}): JogoDisputado[] {
+  if (s.fim) return [];
+  const e = s.e;
+  const { memoria, jogos, dasLigas } = s;
+  const copas = copasDe(s);
+  const J = g.jogador;
+  const ctxDir: CtxDiretoria = Object.assign(s.ctx, { jogador: J });
+  const { gestao: comGestao, mercado: comMercado, diretoria: comDiretoria, imprensa: comImprensa } = s.com;
+  const ligas = Object.keys(e.clubesPorLiga);
+  const rngDe = (x: string) => rngDeTemp(s, x);
+  const ligaDe = (id: string): string[] => ligas.map((l) => e.clubesPorLiga[l]).find((cs) => cs.includes(id)) ?? [];
   /** O clube é do jogador neste momento (o técnico dele ainda está lá). */
   const ehDoJogador = (id: string): boolean => J?.clube === id && !!e.entradas[id]?.tecnico.humano;
   // Fator casa e vaia pelo Humor (GDD-gestao 9). PROVISORIO: sem conta (sul-americanos), o fator pela torcida × Humor ÷ 50.
@@ -137,24 +204,11 @@ export function simularTemporada(e: EntradaTemporada): Temporada {
       : Math.min(2, modCasa(clube) * h / 50);
     return { fatorCasa: fc, vaia: h <= TORCIDA.vaia };
   };
-
-  const copas: Copa[] = [];
-  if (e.europeus) {
-    const brasileiros = [...(e.clubesPorLiga['serie-a'] ?? []), ...(e.clubesPorLiga['serie-b'] ?? [])];
-    const lib = ANO1.libertadores;
-    const vagas = e.libertadores ?? [lib.brasil, lib.argentina, lib.colombia, lib.chile];
-    const libertadores = criarLibertadores(vagas, rngDe('sorteio-libertadores'), () => rngDe('desempate-libertadores'));
-    const champions = criarChampions(e.europeus, rngDe('sorteio-champions'));
-    copas.push(criarCopaDoBrasil(brasileiros, e.folgasCopaDoBrasil ?? ANO1.folgasCopaDoBrasil), libertadores, champions, criarMundial(libertadores, champions));
-  }
-
-  const jogos: JogoDisputado[] = [];
-  /** 8b2: semana sem jogo do clube do jogador também é um ciclo do mercado (pré-temporada e pausas). */
-  let ultimoMercado = 0;
   /** 8b3: Série B na ordem da tabela até agora (o último oferece emprego ao técnico livre há 26 semanas). */
   const ultimosDaB = (): string[] => classificar(e.clubesPorLiga['serie-b'] ?? [], jogos.filter((j) => j.competicao === 'serie-b'), rngDe('carreira-serie-b')).map((l) => l.clube);
-  const ultimoDia = Math.max(...dasLigas.map((j) => j.dia), 52 * 7);
-  for (let dia = 1; dia <= ultimoDia; dia++) {
+  const dia = s.dia;
+  const feitos: JogoDisputado[] = [];
+  try {
     // Etapa 4, 3ª fatia: safra na semana 1 (GDD-gestao 5).
     if (dia === 1 && comGestao) novaSafra(memoria, rngDe('safra'));
     ctxDir.dia = dia;
@@ -176,7 +230,7 @@ export function simularTemporada(e: EntradaTemporada): Temporada {
         cicloNaImprensa(memoria, ctxDir, lados[k], { dia: j.dia, competicao: j.competicao, adversario: lados[1 - k], casa: k === 0 && !jc?.neutro, classico, decisao });
       }
       // Mercado do clube do jogador (8b2): rodadas do ciclo anterior e a tela, antes do treino e da lista do jogo; sorteio próprio, fora do da IA.
-      for (const k of [0, 1] as const) if (ehDoJogador(lados[k]) && comMercado) { cicloDoMercado(memoria, lados[k], j.dia, J!, rngDe(`jogador-mercado-${j.dia}-${j.competicao}`)); cicloDaBase(memoria, lados[k], j.dia, J!, rngDe(`jogador-base-${j.dia}-${j.competicao}`)); cicloDoComercial(memoria, lados[k], j.dia, J!); ultimoMercado = j.dia; }
+      for (const k of [0, 1] as const) if (ehDoJogador(lados[k]) && comMercado) { cicloDoMercado(memoria, lados[k], j.dia, J!, rngDe(`jogador-mercado-${j.dia}-${j.competicao}`)); cicloDaBase(memoria, lados[k], j.dia, J!, rngDe(`jogador-base-${j.dia}-${j.competicao}`)); cicloDoComercial(memoria, lados[k], j.dia, J!); s.ultimoMercado = j.dia; }
       const impeto = comImprensa ? impetoDoJogo(memoria, lados[0], lados[1]) : [0, 0];
       const prep = lados.map((c) => prepararJogo(memoria, c, j.dia, j.competicao, rngMem, ehDoJogador(c) && J!.treino ? (ciclo, ia) => J!.treino!(ciclo, ia, memoria) : undefined, ehDoJogador(c) && memoria.taticaJogador ? alvoDoTreino(memoria, c, e.tatica) : undefined));
       // Próximo jogo do clube do jogador: titulares e padrão dele; sem escolha, o auxiliar (IA e adaptação).
@@ -236,8 +290,10 @@ export function simularTemporada(e: EntradaTemporada): Temporada {
         if (campeao && comImprensa && !memoria.dirCopas.has(`${copa.id}-titulo-imprensa`)) { memoria.dirCopas.add(`${copa.id}-titulo-imprensa`); tituloNaImprensa(memoria, campeao, copa.id); }
       }
       jogos.push(d);
+      feitos.push(d);
+      if (lados.some(ehDoJogador)) s.ultimoJogoJogador = dia;
       for (const k of [0, 1] as const) if (ehDoJogador(lados[k])) J!.aoJogo?.(d, r, memoria);
-      e.aoJogar?.(d);
+      g.aoJogar?.(d);
     }
     // Evolução a cada 4 semanas e perfis de jovem a cada 13 (GDD-gestao 5).
     if (comGestao && dia % EVOLUCAO.periodoDias === 0) periodoDeEvolucao(memoria, rngDe(`evolucao-${dia}`));
@@ -246,15 +302,53 @@ export function simularTemporada(e: EntradaTemporada): Temporada {
     // Mercado (GDD-gestao 6): valor, relatórios e renovações a cada 4 semanas; janelas e livres toda semana.
     if (comMercado && dia % FINANCAS.diasMes === 0) periodoDeMercado(memoria, dia, rngDe(`mercado-periodo-${dia}`));
     if (comDiretoria && dia % 7 === 0) cicloDoTecnico(memoria, ctxDir, ultimosDaB);
-    if (comMercado && dia % 7 === 0 && J && ehDoJogador(J.clube) && ultimoMercado <= dia - 7) { cicloDoMercado(memoria, J.clube, dia, J, rngDe(`jogador-mercado-semana-${dia}`), true); cicloDaBase(memoria, J.clube, dia, J, rngDe(`jogador-base-semana-${dia}`)); cicloDoComercial(memoria, J.clube, dia, J); ultimoMercado = dia; }
+    if (comMercado && dia % 7 === 0 && J && ehDoJogador(J.clube) && s.ultimoMercado <= dia - 7) { cicloDoMercado(memoria, J.clube, dia, J, rngDe(`jogador-mercado-semana-${dia}`), true); cicloDaBase(memoria, J.clube, dia, J, rngDe(`jogador-base-semana-${dia}`)); cicloDoComercial(memoria, J.clube, dia, J); s.ultimoMercado = dia; }
     if (comMercado && dia % 7 === 0) semanaDeMercado(memoria, dia, rngDe(`mercado-semana-${dia}`));
     if (comDiretoria && comMercado && dia % 7 === 0) semanaNaDiretoria(memoria);
     if (memoria.financas.size && dia % FINANCAS.diasMes === 0 && dia <= FINANCAS.diasMes * FINANCAS.meses) fecharMesContas(memoria, dia, (id) => e.entradas[id].clube);
     if (comDiretoria && dia % FINANCAS.diasMes === 0 && dia <= FINANCAS.diasMes * FINANCAS.meses) mesNaDiretoria(memoria, ctxDir);
+  } finally {
+    delete (s.ctx as Partial<CtxDiretoria>).jogador;
   }
+  s.dia += 1;
+  if (s.dia > s.ultimoDia) s.fim = true;
+  return feitos;
+}
 
-  if (comImprensa) fecharAnoImprensa(memoria, e.clubesPorLiga, ctxDir.ano);
+/**
+ * Um ciclo do clube do jogador (decisão do Gustavo, 5d1): até o fim do dia do próximo jogo dele; semana sem jogo
+ * (pré-temporada, pausas, técnico sem clube) = até o fim da semana.
+ */
+export function avancarCiclo(s: EstadoTemporada, g: Ganchos = {}): JogoDisputado[] {
+  const feitos: JogoDisputado[] = [];
+  while (!s.fim) {
+    const dia = s.dia;
+    feitos.push(...jogarDia(s, g));
+    if (s.ultimoJogoJogador === dia) break;
+    if (dia % 7 === 0 && s.ultimoJogoJogador <= dia - 7) break;
+  }
+  return feitos;
+}
+
+/** Encerra o ano (imprensa e tabelas finais). Só uma vez, depois do último dia. */
+export function fecharTemporada(s: EstadoTemporada): Temporada {
+  if (!s.fim) throw new Error('temporada: o ano ainda não acabou');
+  if (s.fechada) throw new Error('temporada: já encerrada');
+  s.fechada = true;
+  const e = s.e;
+  if (s.com.imprensa) fecharAnoImprensa(s.memoria, e.clubesPorLiga, s.ctx.ano);
   const tabelas: Record<string, Linha[]> = {};
-  for (const liga of ligas) tabelas[liga] = classificar(e.clubesPorLiga[liga], jogos.filter((j) => j.competicao === liga), rngDe(`sorteio-${liga}`));
-  return { semente: e.semente, jogos, tabelas, copas, memoria };
+  for (const liga of Object.keys(e.clubesPorLiga)) tabelas[liga] = classificar(e.clubesPorLiga[liga], s.jogos.filter((j) => j.competicao === liga), rngDeTemp(s, `sorteio-${liga}`));
+  return { semente: e.semente, jogos: s.jogos, tabelas, copas: copasDe(s), memoria: s.memoria };
+}
+
+/** Tabela de uma liga até agora (para a tela; sorteio de desempate próprio, fora do laço). */
+export function tabelaAtual(s: EstadoTemporada, liga: string): Linha[] {
+  return classificar(s.e.clubesPorLiga[liga], s.jogos.filter((j) => j.competicao === liga), rngDeTemp(s, `sorteio-${liga}`));
+}
+
+export function simularTemporada(e: EntradaTemporada): Temporada {
+  const s = iniciarTemporada(e);
+  while (!s.fim) jogarDia(s, e);
+  return fecharTemporada(s);
 }
