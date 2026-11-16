@@ -14,7 +14,7 @@ import type { Acao, AcaoDisputa, TipoChute } from './parametros.ts';
 import { criarRng, semearDeTexto } from './rng.ts';
 import type { Rng } from './rng.ts';
 import type { Tatica } from './dados.ts';
-import type { AjustePausa, ControlePausa, EntradaPartida, Escalado, EstatInicio, EstatTime, FinsCadeia, Lance, RegistroLesao, RelatorioPausa, RelatorioTime, ResultadoPartida, TimeEmCampo } from './tipos.ts';
+import type { AjustePausa, ControlePausa, EntradaPartida, InfoPausa, Escalado, EstatInicio, EstatTime, FinsCadeia, Lance, RegistroLesao, RelatorioPausa, RelatorioTime, ResultadoPartida, TimeEmCampo } from './tipos.ts';
 import { TOTAL_ZONAS, codigoZona, corredor, distancia, espelhar, faixa, zona as zonaDe } from './zonas.ts';
 
 type TipoInicio = 'saida' | 'recuperacao' | 'contra' | 'reinicio' | 'continuacao' | 'escanteio' | 'faltaPerigosa';
@@ -965,7 +965,7 @@ function aplicarDoJogador(st: Estado, i: 0 | 1, intervalo: boolean, aj: AjustePa
 }
 
 /** Os dois técnicos decidem sobre o mesmo cenário; só depois as mudanças entram (GDD 7). */
-function pausa(st: Estado, b: number): RelatorioPausa {
+function* pausa(st: Estado, b: number): Generator<InfoPausa, RelatorioPausa, AjustePausa | null> {
   const minuto = b * 15;
   const intervalo = b === GDD.blocoIntervalo;
   const ajustes: [string[], string[]] = [st.avisos[0], st.avisos[1]];
@@ -980,10 +980,12 @@ function pausa(st: Estado, b: number): RelatorioPausa {
     const sug = sugerir(st, i, minuto, intervalo, ctl.leitura, rp);
     const times: [RelatorioTime, RelatorioTime] = [relatorio(st, 0, [...ajustes[0]]), relatorio(st, 1, [...ajustes[1]])];
     times[o].ajustes = rp.pct(ctl.analista.aoVivo * 5) ? [...st.ultimaPausa[o], ...ajustes[o]] : [];
-    const aj = ctl.pausa({
+    // 5d2: a partida para aqui e retoma com a resposta (a interface síncrona chama `ctl.pausa`).
+    const aj = yield {
       minuto, intervalo, lado: i, placar: [st.placar[0], st.placar[1]], times, extras: extrasDoAnalista(st, i, b, ctl.analista, rp),
       sugestoes: sug.map((s) => s.texto), lances: st.lances.filter((l) => l.bloco === b), time: st.t[i], rival: st.t[o], trocasRestantes: GDD.substituicoes - st.t[i].trocas,
-    });
+      estatisticas: [structuredClone(st.est[0]), structuredClone(st.est[1])],
+    };
     if (aj) doJogador = { aj, sug };
   }
   const doLado = (i: 0 | 1): boolean => !!doJogador && ctl!.lado === i;
@@ -1032,7 +1034,18 @@ function cadeiaMedida(st: Estado, ini: Inicio): Inicio {
 
 export const calcularAcrescimos =(gols: number, lesoes: number, faltas: number): number => Math.min(2, gols + lesoes + Math.floor(faltas / PROVISORIO.faltasPorAcrescimo));
 
+/** Partida passo a passo (5d2): para em cada pausa do clube do jogador (`ent.controle`) e retoma com a resposta. */
+export type PartidaEmPassos = Generator<InfoPausa, ResultadoPartida, AjustePausa | null>;
+
+/** Interface síncrona: responde cada pausa com `ent.controle.pausa`. */
 export function simularPartida(ent: EntradaPartida): ResultadoPartida {
+  const it = partidaEmPassos(ent);
+  let p = it.next();
+  while (!p.done) p = it.next(ent.controle?.pausa?.(p.value) ?? null);
+  return p.value;
+}
+
+export function* partidaEmPassos(ent: EntradaPartida): PartidaEmPassos {
   const rng = criarRng(ent.semente);
   const classico = ent.mandante.clube.rivais.some((r) => r.clubeId === ent.visitante.clube.id)
     || ent.visitante.clube.rivais.some((r) => r.clubeId === ent.mandante.clube.id);
@@ -1096,7 +1109,7 @@ export function simularPartida(ent: EntradaPartida): ResultadoPartida {
     if (b === GDD.blocoIntervalo) registrar(st, 'abertura', 'Intervalo', 0, { resultado: 'intervalo' });
     else if (b < GDD.blocos) registrar(st, 'pausas', 'Pausa de 15 minutos', 0, { resultado: 'parada técnica' });
     if (b < GDD.blocos) {
-      pausas.push(pausa(st, b));
+      pausas.push(yield* pausa(st, b));
       // Quem ia receber a bola pode ter sido substituído.
       if (prox.portador && !t[prox.posse].escalados.includes(prox.portador)) prox = { ...prox, portador: null };
     }

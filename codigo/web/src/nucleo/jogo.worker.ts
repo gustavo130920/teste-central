@@ -4,12 +4,14 @@
 import { montarBase } from '../../../temporada/base.ts';
 import { concluirAno, criarMundo, iniciarAno, virar } from '../../../temporada/virada.ts';
 import type { Mundo } from '../../../temporada/virada.ts';
-import { avancarCiclo, copasDe, tabelaAtual } from '../../../temporada/temporada.ts';
-import type { JogoDisputado } from '../../../temporada/temporada.ts';
+import { cicloEmPassos, copasDe, tabelaAtual } from '../../../temporada/temporada.ts';
+import type { DiaEmPassos, JogoDisputado, RespostaDoDia } from '../../../temporada/temporada.ts';
+import type { AoVivo, Contexto } from './partida.ts';
+import { ajusteDaResposta, aplicarPreJogo, fimJogo, infoJogoTela, novasLinhas, novoAoVivo, parcial, preJogo, telaPausa } from './partida.ts';
 import { assumirClube, criarTecnicoDoJogador } from '../../../temporada/jogador.ts';
 import { carregar, salvar } from '../../../temporada/salvamento.ts';
 import { comprimir, descomprimir, apagar, gravar, ler, listar } from './saves.ts';
-import type { ClubeResumo, InfoSlot, JogoTela, NovoJogo, Painel, Pedido, Pedidos, Resposta, ResumoVirada, Slot, TipoPedido } from './protocolo.ts';
+import type { ClubeResumo, Etapa, EscolhaPreJogo, RespostaPausa, InfoSlot, JogoTela, NovoJogo, Painel, Pedido, Pedidos, Resposta, ResumoVirada, Slot, TipoPedido } from './protocolo.ts';
 
 const arquivos = import.meta.glob('../../../gerado/*.json', { eager: true, import: 'default' }) as Record<string, unknown>;
 /** Base nova a cada jogo: a carreira muda elencos e fichas (o mundo não copia tudo). */
@@ -58,6 +60,7 @@ function novoJogo(p: NovoJogo): Painel {
   w.jogador = { clube: clube.id };
   w.eventos = { modelos: b.eventos, imprensa: b.imprensa, cenario: 'avancar', clubes: [clube.id], texto: null };
   iniciarAno(w, p.semente);
+  abandonarCiclo();
   m = w;
   extra = { semente: p.semente, clubeTela: clube.id };
   ultimos = [];
@@ -65,11 +68,65 @@ function novoJogo(p: NovoJogo): Painel {
   return painel(w);
 }
 
-async function avancar(): Promise<Painel> {
+// ---------- Ciclo em passos e partida ao vivo (5d2) ----------
+
+/** Ciclo em andamento: só existe entre o pré-jogo e o fim da partida do clube do jogador. */
+let ciclo: { it: DiaEmPassos; aoVivo: AoVivo | null } | null = null;
+
+function abandonarCiclo(): void {
+  ciclo?.it.return([]);
+  ciclo = null;
+}
+
+function contexto(w: Mundo): Contexto {
+  return { mem: w.emAndamento!.memoria, tatica: w.tatica, elencos: w.elencos, frases: base.frases, clube: w.jogador!.clube };
+}
+
+const nomesDe = (w: Mundo) => Object.fromEntries(w.clubes.map((x) => [x.id, x.nomeCurto]));
+
+function avancar(): Promise<Etapa> {
   const w = exigir();
+  if (ciclo) throw new Error('Há uma partida em andamento.');
   virada = null;
   const s = w.emAndamento ?? iniciarAno(w, extra.semente);
-  ultimos = avancarCiclo(s, { jogador: w.jogador });
+  const J = w.jogador!;
+  // O controle do jogador não vai no save (5c): o gancho do fim do jogo é posto aqui a cada ciclo.
+  J.aoJogo = (d, r) => { if (ciclo?.aoVivo) ciclo.aoVivo.final = { d, r }; };
+  ciclo = { it: cicloEmPassos(s, { jogador: J, interativo: true }), aoVivo: null };
+  return conduzir(undefined);
+}
+
+/** Roda o ciclo até o próximo pedido (pré-jogo ou pausa) ou até o fim. */
+async function conduzir(resposta: RespostaDoDia | undefined): Promise<Etapa> {
+  const w = exigir();
+  const s = w.emAndamento!;
+  const c = ciclo!;
+  let p;
+  try { p = c.it.next(resposta as RespostaDoDia); } catch (e) { ciclo = null; throw e; }
+  while (!p.done) {
+    const v = p.value;
+    const ctx = contexto(w);
+    if (v.tipo === 'escalar') {
+      const clube = w.clubes.find((x) => x.id === w.jogador!.clube)!;
+      const fase = copasDe(s).flatMap((cp) => cp.previstos(s.dia)).find((j) => j.dia === v.pedido.jogo.dia && (j.mandante === clube.id || j.visitante === clube.id))?.fase;
+      const jogo = infoJogoTela(v.pedido.jogo, v.lado, clube.id, v.lado === 0 ? clube.estadio : w.clubes.find((x) => x.id === v.pedido.jogo.adversario)?.estadio ?? null, fase);
+      c.aoVivo = novoAoVivo(jogo, v.pedido.jogo.dia);
+      return { tipo: 'prejogo', pre: preJogo(ctx, v.pedido, jogo, nomesDe(w)) };
+    }
+    const a = c.aoVivo!;
+    a.lances.push(...v.info.lances);
+    a.info = v.info;
+    if (a.simular) { p = c.it.next(null); continue; }
+    return { tipo: 'pausa', jogo: a.jogo, nomes: nomesDe(w), linhas: novasLinhas(ctx, a, parcial(v.info, a), v.info.minuto / 15), pausa: telaPausa(ctx, v.info) };
+  }
+  ciclo = null;
+  ultimos = p.value;
+  const a = c.aoVivo;
+  let linhas: ReturnType<typeof novasLinhas> = [];
+  if (a?.final) {
+    if (a.simular) a.narrados = 0;
+    linhas = novasLinhas(contexto(w), a, a.final.r, 99);
+  }
   if (s.fim) {
     const r = virar(w, concluirAno(w));
     virada = { ano: r.ano, campeoes: r.campeoes, rebaixados: r.rebaixados, promovidos: r.promovidos };
@@ -77,7 +134,25 @@ async function avancar(): Promise<Painel> {
     // Slot automático gravado em toda virada (decisão do Gustavo, 5d1).
     await salvarEm('auto');
   }
-  return painel(w);
+  const pn = painel(w);
+  if (a?.final) return { tipo: 'fim', jogo: a.jogo, nomes: pn.nomes, linhas, fim: fimJogo(a, ultimos), painel: pn };
+  return { tipo: 'painel', painel: pn };
+}
+
+
+function responderPreJogo(e: EscolhaPreJogo): Promise<Etapa> {
+  const w = exigir();
+  if (!ciclo?.aoVivo || ciclo.aoVivo.info) throw new Error('Nenhum pré-jogo aberto.');
+  ciclo.aoVivo.simular = e.modo === 'simular';
+  return conduzir(aplicarPreJogo(contexto(w), e));
+}
+
+function responderPausa(r: RespostaPausa): Promise<Etapa> {
+  const w = exigir();
+  const a = ciclo?.aoVivo;
+  if (!a?.info) throw new Error('Nenhuma pausa aberta.');
+  if (r.simularResto) a.simular = true;
+  return conduzir(ajusteDaResposta(contexto(w), a.info, r));
 }
 
 function exigir(): Mundo {
@@ -132,6 +207,7 @@ function infoDe(w: Mundo, slot: Slot, tamanho: number, criado = new Date().toISO
 
 async function salvarEm(slot: Slot): Promise<InfoSlot> {
   const w = exigir();
+  if (ciclo) throw new Error('Termine a partida antes de salvar.');
   const dados = await comprimir(salvar<ExtraWeb>(w, extra));
   const info = infoDe(w, slot, dados.size);
   await gravar(info, dados);
@@ -151,6 +227,7 @@ async function carregarSlot(slot: Slot): Promise<Painel> {
   const r = await ler(slot);
   if (!r) throw new Error('Slot vazio.');
   const a = await abrirSave(r.dados);
+  abandonarCiclo();
   m = a.mundo;
   extra = a.extra;
   ultimos = [];
@@ -184,6 +261,8 @@ const tratar: Tratador = {
   clubes: () => clubes(),
   novoJogo: (p) => novoJogo(p),
   avancar: () => avancar(),
+  preJogo: (e) => responderPreJogo(e),
+  pausa: (r) => responderPausa(r),
   painel: () => (m ? painel(m) : null),
   slots: () => listar(),
   salvar: (slot) => salvarEm(slot),

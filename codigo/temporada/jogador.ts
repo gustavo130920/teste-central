@@ -153,12 +153,12 @@ export interface ControleJogador {
 }
 
 /** Analista e leitura do auxiliar com o técnico para as pausas do clube do jogador (GDD 7). */
-export function controleDaPausa(mem: Memoria, clube: string, lado: 0 | 1, pausa: ControlePausa['pausa']): ControlePausa {
+export function controleDaPausa(mem: Memoria, clube: string, lado: 0 | 1, pausa?: ControlePausa['pausa']): ControlePausa {
   const g = mem.gestao.get(clube);
   const at = (cargo: Parameters<typeof efetivo>[1], sigla: string): number => (g ? efetivo(g.comissao, cargo, sigla) : 10);
   const lt = g?.tecnico.trabalho?.['Leitura Tática'] ?? 10;
   return {
-    lado, pausa,
+    lado, ...(pausa ? { pausa } : {}),
     analista: { profundidade: at('Analista', 'Prof'), precisao: at('Analista', 'Prec'), aoVivo: at('Analista', 'Vivo') },
     leitura: (at('Auxiliar', 'Lei') + lt) / 2,
   };

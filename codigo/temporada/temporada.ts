@@ -1,10 +1,10 @@
 // Temporada (etapa 3): 5 ligas de pontos corridos e as copas. Cada jogo roda com o motor completo e semente própria.
 // Memória entre jogos (condição, lesões, suspensões, rodízio) em memoria.ts; copas em copas.ts.
 import type { Jogador, Profissional, Tatica } from '../motor/dados.ts';
-import { simularPartida } from '../motor/partida.ts';
+import { partidaEmPassos } from '../motor/partida.ts';
 import { disputarPenaltis } from '../motor/penaltis.ts';
 import { criarRng, semearDeTexto } from '../motor/rng.ts';
-import type { EntradaTime } from '../motor/tipos.ts';
+import type { AjustePausa, EntradaTime, InfoPausa } from '../motor/tipos.ts';
 import type { Jogo } from './calendario.ts';
 import { jogosDaLiga } from './calendario.ts';
 import type { Linha, ResultadoJogo } from './classificacao.ts';
@@ -42,7 +42,7 @@ export const LIGAS = ['serie-a', 'serie-b', 'argentina', 'colombia', 'chile'] as
 /** Decisão do Gustavo (13/11/2026): "decisão" na moral = mata-mata das quartas em diante e o Mundial. */
 const DECISAO = ['Quartas', 'Semifinal', 'Final'];
 
-import type { ControleJogador } from './jogador.ts';
+import type { ControleJogador, InfoJogo, PedidoEscalacao } from './jogador.ts';
 import { confiancaInicial, controleDaPausa } from './jogador.ts';
 export interface JogoDisputado extends Jogo, ResultadoJogo {
   semente: number;
@@ -101,8 +101,19 @@ export interface EntradaTemporada {
   jogador?: ControleJogador;
 }
 
-/** Ganchos da temporada: funções, fora do estado salvo. */
-export interface Ganchos { jogador?: ControleJogador; aoJogar?: (j: JogoDisputado) => void }
+/**
+ * Ganchos da temporada: funções, fora do estado salvo. `interativo` (5d2): em vez de chamar `jogador.escalar` e
+ * `jogador.pausa`, o laço em passos (`diaEmPassos`, `cicloEmPassos`) para e devolve o pedido a quem conduz.
+ */
+export interface Ganchos { jogador?: ControleJogador; aoJogar?: (j: JogoDisputado) => void; interativo?: boolean }
+
+export type RespostaEscalar = ReturnType<NonNullable<ControleJogador['escalar']>>;
+/** O que o laço em passos pede a quem conduz (5d2). */
+export type PedidoDoDia =
+  | { tipo: 'escalar'; pedido: PedidoEscalacao; lado: 0 | 1 }
+  | { tipo: 'pausa'; info: InfoPausa; jogo: InfoJogo };
+export type RespostaDoDia = RespostaEscalar | AjustePausa | null;
+export type DiaEmPassos = Generator<PedidoDoDia, JogoDisputado[], RespostaDoDia>;
 
 /**
  * Temporada em andamento (5d1): só dados, para salvar a qualquer ciclo. O laço avança um dia por vez (`jogarDia`)
@@ -182,6 +193,13 @@ export function iniciarTemporada(e: EntradaTemporada): EstadoTemporada {
 
 /** Joga o dia `s.dia` (jogos, ciclos da gestão e fechamentos) e passa para o seguinte. Devolve os jogos do dia. */
 export function jogarDia(s: EstadoTemporada, g: Ganchos = {}): JogoDisputado[] {
+  const r = diaEmPassos(s, { ...g, interativo: false }).next();
+  if (!r.done) throw new Error('temporada: pedido interativo fora do modo interativo');
+  return r.value;
+}
+
+/** O mesmo dia em passos (5d2): com `g.interativo`, para no pré-jogo e em cada pausa do clube do jogador. */
+export function* diaEmPassos(s: EstadoTemporada, g: Ganchos = {}): DiaEmPassos {
   if (s.fim) return [];
   const e = s.e;
   const { memoria, jogos, dasLigas } = s;
@@ -234,10 +252,15 @@ export function jogarDia(s: EstadoTemporada, g: Ganchos = {}): JogoDisputado[] {
       const impeto = comImprensa ? impetoDoJogo(memoria, lados[0], lados[1]) : [0, 0];
       const prep = lados.map((c) => prepararJogo(memoria, c, j.dia, j.competicao, rngMem, ehDoJogador(c) && J!.treino ? (ciclo, ia) => J!.treino!(ciclo, ia, memoria) : undefined, ehDoJogador(c) && memoria.taticaJogador ? alvoDoTreino(memoria, c, e.tatica) : undefined));
       // Próximo jogo do clube do jogador: titulares e padrão dele; sem escolha, o auxiliar (IA e adaptação).
-      const plano = lados.map((c, k) => (ehDoJogador(c) && J!.escalar ? J!.escalar({
-        jogo: { dia: j.dia, competicao: j.competicao, adversario: lados[1 - k], casa: k === 0 && !jc?.neutro, classico, decisao },
-        elenco: prep[k].elenco, condicao: prep[k].condicao, poupados: prep[k].poupados, desfalques: prep[k].desfalques,
-      }, memoria) : null));
+      const plano: RespostaEscalar[] = [null, null];
+      for (const k of [0, 1] as const) {
+        if (!ehDoJogador(lados[k]) || !(g.interativo || J!.escalar)) continue;
+        const pedido: PedidoEscalacao = {
+          jogo: { dia: j.dia, competicao: j.competicao, adversario: lados[1 - k], casa: k === 0 && !jc?.neutro, classico, decisao },
+          elenco: prep[k].elenco, condicao: prep[k].condicao, poupados: prep[k].poupados, desfalques: prep[k].desfalques,
+        };
+        plano[k] = g.interativo ? (yield { tipo: 'escalar', pedido, lado: k }) as RespostaEscalar : J!.escalar!(pedido, memoria);
+      }
       const padrao = lados.map((c, k) => {
         if (plano[k]) return plano[k]!.padrao ? { ...e.entradas[c].padrao, ...plano[k]!.padrao } : undefined;
         const leitura = memoria.leituras.get(`${c}>${lados[1 - k]}`);
@@ -254,8 +277,15 @@ export function jogarDia(s: EstadoTemporada, g: Ganchos = {}): JogoDisputado[] {
       const entrada = (k: 0 | 1): EntradaTime => ({ ...(impeto[k] ? { impeto: impeto[k] } : {}), ...(plano[k]?.titulares ? { titulares: plano[k]!.titulares } : {}), ...(plano[k]?.instrucoes ? { instrucoes: plano[k]!.instrucoes } : {}), ...(plano[k]?.batedores ? { batedores: plano[k]!.batedores } : {}), ...(plano[k]?.marcacao ? { marcacao: plano[k]!.marcacao } : {}), ...e.entradas[lados[k]], elenco: prep[k].elenco, condicao: prep[k].condicao, poupados: prep[k].poupados, padrao: padrao[k] ?? e.entradas[lados[k]].padrao, apoio: prep[k].apoio, moral: prep[k].moral,
         ...(k === 0 && comDiretoria ? casa(lados[0], lados[1], j.competicao, decisao, !!jc?.neutro) : {}) });
       const kj = ([0, 1] as const).find((k) => ehDoJogador(lados[k]));
-      const controle = kj !== undefined && J!.pausa ? controleDaPausa(memoria, lados[kj], kj, (info) => J!.pausa!(info, { dia: j.dia, competicao: j.competicao, adversario: lados[1 - kj], casa: kj === 0 && !jc?.neutro, classico, decisao }, memoria)) : undefined;
-      const r = simularPartida({ mandante: entrada(0), visitante: entrada(1), tatica: e.tatica, semente, neutro: jc?.neutro, ...(controle ? { controle } : {}) });
+      const controle = kj !== undefined && (g.interativo || J!.pausa) ? controleDaPausa(memoria, lados[kj], kj) : undefined;
+      const partida = partidaEmPassos({ mandante: entrada(0), visitante: entrada(1), tatica: e.tatica, semente, neutro: jc?.neutro, ...(controle ? { controle } : {}) });
+      let passo = partida.next();
+      while (!passo.done) {
+        const jogo: InfoJogo = { dia: j.dia, competicao: j.competicao, adversario: lados[1 - kj!], casa: kj === 0 && !jc?.neutro, classico, decisao };
+        const aj = g.interativo ? (yield { tipo: 'pausa', info: passo.value, jogo }) as AjustePausa | null : J!.pausa!(passo.value, jogo, memoria);
+        passo = partida.next(aj);
+      }
+      const r = passo.value;
       const [x, y] = r.estatisticas;
       const titulares = (k: 0 | 1): number => {
         const ids = r.times[k].participantes.slice(0, 11).map((p) => p.j.id);
@@ -320,10 +350,17 @@ export function jogarDia(s: EstadoTemporada, g: Ganchos = {}): JogoDisputado[] {
  * (pré-temporada, pausas, técnico sem clube) = até o fim da semana.
  */
 export function avancarCiclo(s: EstadoTemporada, g: Ganchos = {}): JogoDisputado[] {
+  const r = cicloEmPassos(s, { ...g, interativo: false }).next();
+  if (!r.done) throw new Error('temporada: pedido interativo fora do modo interativo');
+  return r.value;
+}
+
+/** O mesmo ciclo em passos (5d2). */
+export function* cicloEmPassos(s: EstadoTemporada, g: Ganchos = {}): DiaEmPassos {
   const feitos: JogoDisputado[] = [];
   while (!s.fim) {
     const dia = s.dia;
-    feitos.push(...jogarDia(s, g));
+    feitos.push(...(yield* diaEmPassos(s, g)));
     if (s.ultimoJogoJogador === dia) break;
     if (dia % 7 === 0 && s.ultimoJogoJogador <= dia - 7) break;
   }

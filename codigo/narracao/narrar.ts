@@ -5,7 +5,8 @@ import { criarRng } from '../motor/rng.ts';
 import type { Rng } from '../motor/rng.ts';
 import type { Escalado, Lance, ResultadoPartida } from '../motor/tipos.ts';
 
-export interface LinhaNarrada { bloco: number; minuto: string; voz: 'N' | 'C'; texto: string; tema: string }
+/** `placar` e `time` do lance (5d2: placar em LED da partida ao vivo). */
+export interface LinhaNarrada { bloco: number; minuto: string; voz: 'N' | 'C'; texto: string; tema: string; placar: [number, number]; time: 0 | 1; gol: boolean }
 export interface OpcoesNarracao { competicao: string }
 
 const FRASES_POR_BLOCO: [number, number] = [8, 14];
@@ -19,7 +20,7 @@ const eGolDoLance = (l: Lance): boolean => l.tema === 'gol' || (l.tema === 'pena
 const faixaDe = (z: string | null): number => (z ? Number(z[2]) : 0);
 const candidatoMenor = (l: Lance): boolean => !sempreNarra(l) && faixaDe(l.zonaDestino ?? l.zonaOrigem) >= 4;
 
-function atende(cond: string, l: Lance, res: ResultadoPartida, estevePerdendo: boolean): boolean {
+function atende(cond: string, l: Lance, res: Pick<ResultadoPartida, 'classico'>, estevePerdendo: boolean): boolean {
   if (cond === 'Sempre') return true;
   const [tipo, ...resto] = cond.split(' ');
   const valor = resto.join(' ');
@@ -59,7 +60,7 @@ function atende(cond: string, l: Lance, res: ResultadoPartida, estevePerdendo: b
   }
 }
 
-export function narrar(res: ResultadoPartida, frases: FraseNarracao[], semente: number, op: OpcoesNarracao): LinhaNarrada[] {
+export function narrar(res: Pick<ResultadoPartida, 'times' | 'lances' | 'classico'>, frases: FraseNarracao[], semente: number, op: OpcoesNarracao): LinhaNarrada[] {
   const rng: Rng = criarRng(semente ^ 0x5eed);
   const porId = new Map<string, Escalado>();
   for (const t of res.times) for (const e of t.participantes) porId.set(e.j.id, e);
@@ -109,7 +110,7 @@ export function narrar(res: ResultadoPartida, frases: FraseNarracao[], semente: 
       usadaEm.set(f.id, relogio);
       let texto = f.texto;
       for (const [k, v] of Object.entries(valores)) if (v !== undefined) texto = texto.replaceAll(`{${k}}`, v);
-      linhas.push({ bloco: l.bloco, minuto, voz: f.voz, texto, tema: l.tema });
+      linhas.push({ bloco: l.bloco, minuto, voz: f.voz, texto, tema: l.tema, placar: [l.contexto.placar[0], l.contexto.placar[1]], time: l.time, gol: eGolDoLance(l) || l.resultado === 'gol contra' });
     };
     const n = escolher(l, 'N', valores, estevePerdendo, sempreNarra(l));
     if (!n) return;

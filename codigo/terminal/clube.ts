@@ -17,7 +17,7 @@ import type { JogoDisputado } from '../temporada/temporada.ts';
 import type { Area, ControleJogador, FichaTecnico, InfoJogo, Origem } from '../temporada/jogador.ts';
 import { AREAS, ATALHOS, TECNICO_JOGADOR, assumirClube, criarTecnicoDoJogador, progressoTatica } from '../temporada/jogador.ts';
 import type { EstadoTaticaJogador, TaticaSalva } from '../temporada/taticaJogador.ts';
-import { TATICA_JOGADOR, apagarTatica, definirBatedor, definirInstrucao, estadoTatica, mudarEstiloFormacao, novaTatica, opcoesNaVaga, planoDoJogo, progressoDe, taticaAtiva, usarTatica } from '../temporada/taticaJogador.ts';
+import { TATICA_JOGADOR, ajusteDoPlanoB, apagarTatica, opcoesPlanoB, definirBatedor, definirInstrucao, estadoTatica, mudarEstiloFormacao, novaTatica, opcoesNaVaga, planoDoJogo, progressoDe, taticaAtiva, usarTatica } from '../temporada/taticaJogador.ts';
 import { previaDoOnze } from '../motor/escalacao.ts';
 import { concluirAno, criarMundo, iniciarAno, virar } from '../temporada/virada.ts';
 import { avancarCiclo } from '../temporada/temporada.ts';
@@ -202,25 +202,15 @@ function pausaInstrucao(t: TimeEmCampo, aj: AjustePausa): void {
 }
 /** Plano B (GDD 7): uma tática salva entra inteira; com entrosamento 85%+ a perda radical cai pela metade. */
 function planoB(mem: Memoria, t: TimeEmCampo, aj: AjustePausa): void {
-  const est = estadoTatica(mem, clube.id);
-  const agora = `${t.estilo.nome}|${t.formacaoComBola}|${t.formacaoSemBola}`;
-  const ops = est.taticas.filter((x) => chaveTatica(x) !== agora);
+  const ops = opcoesPlanoB(mem, clube.id, t);
   if (!ops.length) { console.log('  Nenhuma outra tática salva (crie em s) táticas salvas, antes do jogo).'); return; }
-  const entr = (x: TaticaSalva): number => t.apoio.taticas?.[chaveTatica(x)] ?? PLANO_B.minimo;
-  const perda = 1 - custoRadical(t);
-  ops.forEach((x, i) => {
-    const e = entr(x);
-    const pb = e >= PLANO_B.treinada;
-    console.log(`    ${i + 1}) ${x.nome.padEnd(10)} ${x.estilo}, ${x.formacaoComBola} / ${x.formacaoSemBola} · entrosamento ${pct(e)} · ${pb ? `Plano B, perde ${pct(perda * PLANO_B.fator)}` : `sem treino suficiente, perde ${pct(perda)}`} por 15 minutos`);
+  ops.forEach(({ tatica: x, entrosamento: e, planoB: pb, perda }, i) => {
+    console.log(`    ${i + 1}) ${x.nome.padEnd(10)} ${x.estilo}, ${x.formacaoComBola} / ${x.formacaoSemBola} · entrosamento ${pct(e)} · ${pb ? `Plano B, perde ${pct(perda)}` : `sem treino suficiente, perde ${pct(perda)}`} por 15 minutos`);
   });
   const k = escolher('  Tática (número; Enter volta):', ops.length);
   if (k === null) return;
-  const x = ops[k];
-  const estilo = m.tatica.estilos.find((s2) => s2.nome === x.estilo)!;
-  const instrucoes: NonNullable<AjustePausa['instrucoes']> = {};
-  for (const e of t.escalados) instrucoes[e.j.id] = { Com: x.instrucoes[e.j.id]?.Com ?? null, Sem: x.instrucoes[e.j.id]?.Sem ?? null };
-  Object.assign(aj, { estilo: x.estilo === t.estilo.nome ? undefined : x.estilo, formacaoComBola: x.formacaoComBola, formacaoSemBola: x.formacaoSemBola, padrao: { ...estilo.padrao, ...x.padrao }, instrucoes, batedores: { ...x.batedores } });
-  if (!aj.estilo) delete aj.estilo;
+  delete aj.estilo;
+  Object.assign(aj, ajusteDoPlanoB(m.tatica, t, ops[k].tatica));
 }
 
 // ---------- Tática profunda (5b1) ----------

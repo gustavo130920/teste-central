@@ -1,18 +1,24 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { pedir } from '@/nucleo/cliente';
-import type { NovoJogo, Painel as P, Slot } from '@/nucleo/protocolo';
+import type { Etapa, NovoJogo, Painel as P, PreJogo as PJ, Slot } from '@/nucleo/protocolo';
+import { PreJogo } from '@/telas/PreJogo';
+import { Partida } from '@/telas/Partida';
+import type { AoVivoTela } from '@/telas/Partida';
+import { Fim } from '@/telas/Fim';
 import { Inicio } from '@/telas/Inicio';
 import { EscolhaClube } from '@/telas/EscolhaClube';
 import { Painel } from '@/telas/Painel';
 
 /** Pilha de telas: Esc volta uma tela (menos no painel, onde volta só pelo botão Início). */
-type Tela = 'inicio' | 'escolha' | 'painel';
+type Tela = 'inicio' | 'escolha' | 'painel' | 'prejogo' | 'partida' | 'fim';
 
 export default function App() {
   const [pilha, setPilha] = useState<Tela[]>(['inicio']);
   const [painel, setPainel] = useState<P | null>(null);
   const [ocupado, setOcupado] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
+  const [pre, setPre] = useState<PJ | null>(null);
+  const [aoVivo, setAoVivo] = useState<AoVivoTela | null>(null);
   const tela = pilha.at(-1)!;
   const raiz = useRef<HTMLDivElement>(null);
 
@@ -24,13 +30,38 @@ export default function App() {
     try { setPainel(await f()); depois?.(); } catch (e) { setErro((e as Error).message); } finally { setOcupado(false); }
   };
 
+  /** 5d2: o Avançar e as respostas da partida levam ao painel, ao pré-jogo, à pausa ou ao fim. */
+  const receber = (e: Etapa, simulando: boolean) => {
+    if (e.tipo === 'painel') { setPainel(e.painel); setPilha(['painel']); return; }
+    if (e.tipo === 'prejogo') { setPre(e.pre); setAoVivo(null); setPilha(['painel', 'prejogo']); return; }
+    if (e.tipo === 'pausa') {
+      setAoVivo((v) => ({ jogo: e.jogo, nomes: e.nomes, linhas: [...(v?.linhas ?? []), ...e.linhas], pausa: e.pausa, fim: null }));
+      setPilha(['painel', 'partida']);
+      return;
+    }
+    setPainel(e.painel);
+    // Simulado (direto ou o resto): a narração vem inteira e a tela vai ao resultado.
+    setAoVivo((v) => ({ jogo: e.jogo, nomes: e.nomes, linhas: simulando || !v ? e.linhas : [...v.linhas, ...e.linhas], pausa: null, fim: e.fim }));
+    setPilha(['painel', simulando ? 'fim' : 'partida']);
+  };
+  const pedindo = useRef(false);
+  const etapa = async (f: () => Promise<Etapa>, simulando = false) => {
+    // Um pedido por vez: clique e atalho no mesmo instante não mandam a resposta duas vezes.
+    if (pedindo.current) return;
+    pedindo.current = true;
+    setOcupado(true);
+    setErro(null);
+    try { receber(await f(), simulando); } catch (e) { setErro((e as Error).message); } finally { pedindo.current = false; setOcupado(false); }
+  };
+
   useEffect(() => {
     const aoTeclar = (e: KeyboardEvent) => { if (e.key === 'Escape' && tela === 'escolha') voltar(); };
     addEventListener('keydown', aoTeclar);
     return () => removeEventListener('keydown', aoTeclar);
   }, [tela, voltar]);
   // Foco vai para o topo da tela nova (o leitor de tela anuncia o título).
-  useEffect(() => { raiz.current?.querySelector<HTMLElement>('[autofocus], h1')?.focus?.(); document.title = tela === 'painel' && painel ? `${painel.clube.nomeCurto}: semana ${painel.semana}, Central do Técnico` : 'Central do Técnico'; }, [tela, painel]);
+  useEffect(() => { raiz.current?.querySelector<HTMLElement>('[autofocus], h1')?.focus?.(); document.title = tela === 'painel' && painel ? `${painel.clube.nomeCurto}: semana ${painel.semana}, Central do Técnico`
+    : (tela === 'partida' || tela === 'fim') && aoVivo ? `${aoVivo.nomes[aoVivo.jogo.mandante]} x ${aoVivo.nomes[aoVivo.jogo.visitante]}, Central do Técnico` : 'Central do Técnico'; }, [tela, painel, aoVivo]);
 
   return (
     <div ref={raiz}>
@@ -44,8 +75,15 @@ export default function App() {
       )}
       {tela === 'painel' && painel && (
         <Painel painel={painel} ocupado={ocupado} erro={erro} aoSair={() => setPilha(['inicio'])}
-          aoAvancar={() => executar(() => pedir('avancar'))} />
+          aoAvancar={() => etapa(() => pedir('avancar'))} />
       )}
+      {tela === 'prejogo' && pre && (
+        <PreJogo pre={pre} ocupado={ocupado} erro={erro} aoJogar={(e) => etapa(() => pedir('preJogo', e), e.modo === 'simular')} />
+      )}
+      {tela === 'partida' && aoVivo && (
+        <Partida v={aoVivo} ocupado={ocupado} erro={erro} aoResponder={(r) => etapa(() => pedir('pausa', r), !!r.simularResto)} aoVerFim={() => setPilha(['painel', 'fim'])} />
+      )}
+      {tela === 'fim' && aoVivo?.fim && <Fim v={aoVivo} aoVoltar={() => setPilha(['painel'])} />}
     </div>
   );
 }

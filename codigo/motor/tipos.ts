@@ -223,13 +223,16 @@ export interface InfoPausa {
   /** Adversário em campo, para escolher o alvo da marcação individual (5b3). */
   rival: TimeEmCampo;
   trocasRestantes: number;
+  /** Estatísticas até a pausa (5d2, para a tela). */
+  estatisticas?: [EstatTime, EstatTime];
 }
 export interface ControlePausa {
   lado: 0 | 1;
   analista: { profundidade: number; precisao: number; aoVivo: number };
   /** Média entre a Leitura de jogo do auxiliar e a Leitura Tática do técnico. */
   leitura: number;
-  pausa(info: InfoPausa): AjustePausa | null;
+  /** Resposta síncrona; sem ela, quem conduz `partidaEmPassos` responde (5d2). */
+  pausa?(info: InfoPausa): AjustePausa | null;
 }
 
 export interface ContextoLance {

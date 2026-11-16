@@ -18,3 +18,9 @@ export function coresDoClube(texto: string): string[] {
 }
 
 export const milhoes = (v: number | null): string => (v === null ? '—' : `R$ ${v.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} mi`);
+
+/** Instruções do time (GDD 5): chave, rótulo e opções, como no terminal. */
+export const PADRAO: [string, string, string[]][] = [
+  ['linha', 'Linha', ['Alta', 'Média', 'Baixa']], ['pressao', 'Pressão', ['Alta', 'Média', 'Baixa']], ['largura', 'Largura', ['Aberta', 'Normal', 'Estreita']],
+  ['ritmo', 'Ritmo', ['Rápido', 'Normal', 'Lento']], ['saida', 'Saída', ['Curta', 'Mista', 'Direta']],
+];

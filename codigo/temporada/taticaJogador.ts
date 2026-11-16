@@ -2,7 +2,9 @@
 // (estilo, formações, ajustes do padrão, instruções individuais e batedores), qual usar no jogo e qual treinar.
 // Delegada (sem o gancho ou com resposta null), nada disto entra: o motor usa o melhor encaixe e o maior BP.
 import type { Instrucao, Jogador, PadraoTime, Posicao, Tatica, Tecnico } from '../motor/dados.ts';
-import type { Batedores, InstrucoesManuais, TipoBatedor } from '../motor/tipos.ts';
+import type { AjustePausa, Batedores, InstrucoesManuais, TimeEmCampo, TipoBatedor } from '../motor/tipos.ts';
+import { PLANO_B } from '../motor/parametros.ts';
+import { custoRadical } from '../motor/pausas.ts';
 import { coerencia, opcoesDoJogador } from '../motor/plano.ts';
 import { chaveTatica } from '../gestao/treino.ts';
 import type { Memoria } from './memoria.ts';
@@ -144,4 +146,29 @@ export function opcoesNaVaga(j: Jogador, vaga: Posicao, fase: 'Com' | 'Sem', tat
   const aux = ops.find((o) => !o.contraria);
   if (aux) aux.auxiliar = true;
   return ops;
+}
+
+// ---------- Plano B na pausa (5b2; função comum ao terminal e à web desde a 5d2) ----------
+
+export interface OpcaoPlanoB { tatica: TaticaSalva; entrosamento: number; planoB: boolean; perda: number }
+
+/** Táticas salvas diferentes da que está em campo, com o entrosamento e a perda por 15 minutos (GDD 7). */
+export function opcoesPlanoB(mem: Memoria, clube: string, t: TimeEmCampo): OpcaoPlanoB[] {
+  const agora = `${t.estilo.nome}|${t.formacaoComBola}|${t.formacaoSemBola}`;
+  const perda = 1 - custoRadical(t);
+  return estadoTatica(mem, clube).taticas.filter((x) => chaveTatica(x) !== agora).map((x) => {
+    const e = t.apoio.taticas?.[chaveTatica(x)] ?? PLANO_B.minimo;
+    const pb = e >= PLANO_B.treinada;
+    return { tatica: x, entrosamento: e, planoB: pb, perda: pb ? perda * PLANO_B.fator : perda };
+  });
+}
+
+/** A tática salva entra inteira: estilo, formações, padrão, instruções de quem está em campo e batedores. */
+export function ajusteDoPlanoB(tatica: Tatica, t: TimeEmCampo, x: TaticaSalva): AjustePausa {
+  const estilo = tatica.estilos.find((s2) => s2.nome === x.estilo)!;
+  const instrucoes: NonNullable<AjustePausa['instrucoes']> = {};
+  for (const e of t.escalados) instrucoes[e.j.id] = { Com: x.instrucoes[e.j.id]?.Com ?? null, Sem: x.instrucoes[e.j.id]?.Sem ?? null };
+  const aj: AjustePausa = { estilo: x.estilo === t.estilo.nome ? undefined : x.estilo, formacaoComBola: x.formacaoComBola, formacaoSemBola: x.formacaoSemBola, padrao: { ...estilo.padrao, ...x.padrao }, instrucoes, batedores: { ...x.batedores } };
+  if (!aj.estilo) delete aj.estilo;
+  return aj;
 }
