@@ -1,12 +1,13 @@
 // Partida ao vivo (5d2): placar em LED, relógio, narração lance a lance (1x, 2x, 4x, pular até a pausa), estatísticas
 // e a pausa tática com tudo o que o terminal faz. A narração chega do Worker em trechos, de pausa em pausa.
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
 import { useHotkeys } from 'react-hotkeys-hook';
 import { Button } from '@/componentes/ui/button';
 import { Kbd } from '@/componentes/kbd';
 import { Spinner } from '@/componentes/spinner';
 import { Escolha, Secao, pct, rotuloJogo } from '@/componentes/Campo';
-import { Campo2D } from '@/componentes/Campo2D';
+// O PixiJS só carrega quando a primeira partida ao vivo abre (tela inicial mais leve).
+const Campo2D = lazy(() => import('@/componentes/Campo2D').then((m) => ({ default: m.Campo2D })));
 import type { Lance2D, AjustePausa, EstatTela, FimJogo, InfoJogoTela, MarcacaoIndividual, Narrada, RespostaPausa, TelaPausa, Tom } from '@/nucleo/protocolo';
 import { PADRAO } from '@/lib/exibir';
 import { cn } from '@/lib/utils';
@@ -120,7 +121,9 @@ export function Partida({ v, ocupado, erro, aoResponder, aoVerFim }: { v: AoVivo
             <Button size="sm" variant="secondary" disabled={chegou} onClick={() => setMostradas(total)}>{v.fim ? 'Pular até o fim' : 'Pular até a pausa'} <Kbd keys={['P']} className="ml-1" /></Button>
           </div>
           {campoVisivel && pausaRef.current && (
-            <Campo2D meu={pausaRef.current.emCampo} rival={pausaRef.current.rival} lado={v.jogo.lado} lance={lanceAtual} gol={!!ult?.gol && !chegou} velocidade={vel} />
+            <Suspense fallback={<div className="aspect-[3/2] w-full rounded-md border border-linha bg-relva" aria-busy="true" />}>
+              <Campo2D meu={pausaRef.current.emCampo} rival={pausaRef.current.rival} lado={v.jogo.lado} lance={lanceAtual} gol={!!ult?.gol && !chegou} velocidade={vel} />
+            </Suspense>
           )}
           {campoVisivel && pausaRef.current && (
             <p className="-mt-1 flex flex-wrap gap-x-4 text-xs text-musgo">
