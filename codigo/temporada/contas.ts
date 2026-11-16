@@ -11,6 +11,8 @@ import type { Memoria } from './memoria.ts';
 import { folhaDoClube } from './mercado.ts';
 import { avalDaDiretoria } from './diretoria.ts';
 import type { JogoEmCasa } from '../gestao/financas.ts';
+import type { ControleJogador } from './jogador.ts';
+import { comercialManual, mesDoComercial, patrocinioDoJogador } from './comercialJogador.ts';
 
 // Com o mercado (5ª fatia), os empréstimos dividem o salário entre origem e destino.
 const folhaMil = (mem: Memoria, id: string): number => folhaDoClube(mem, id);
@@ -64,6 +66,7 @@ export function fecharMesContas(mem: Memoria, dia: number, clubes: (id: string) 
     const g = mem.gestao.get(id);
     const r = fecharMes(c, { dia, liga: clube.liga, torcida: clube.torcidaTamanho ?? c.torcidaInicial, folhaMil: folhaMil(mem, id), comissaoMil: comissaoMil(mem, id), gerente: gerente(g?.comissao), niveisAcima: niveisAcima(c, clube), humor: mem.humor.get(id), aval: avalDaDiretoria(mem, id) });
     if (r.avalNegado) mem.dir.aval.emprestimo += 1;
+    mesDoComercial(mem, id, c);
     // 2 meses ou mais sem pagar a folha: moral −M por mês (GDD-gestao 7), com o psicólogo (GDD-gestao 3).
     if (r.atrasados >= FINANCAS.atraso.moralApos) {
       const queda = FINANCAS.atraso.moral * (g ? quedaMoral(g.comissao) : 1);
@@ -92,6 +95,9 @@ export interface MundoContas {
   /** Fase mais longe de cada clube em cada copa ("Campeão", "Vice", "Semifinal", ...). */
   copas: Record<string, Map<string, string>>;
   rng: Rng;
+  /** Clube do jogador (5a2): patrocínio manual na virada, com sorteio próprio (não mexe no da IA). */
+  jogador?: ControleJogador;
+  rngJogador?: Rng;
 }
 
 const ORDEM = ['1ª fase', 'Grupos', 'Oitavas', 'Quartas', 'Semifinal', 'Final'];
@@ -151,6 +157,7 @@ export function viradaContas(mem: Memoria, w: MundoContas): ResumoFinancas {
     const p = posicao.get(c.clubeId);
     const titulos = Object.values(w.copas).filter((f) => f.get(c.clubeId) === 'Campeão').length;
     const rivais = new Set(k.rivais.map((r) => r.clubeId).filter((x): x is string => !!x));
+    if (w.rngJogador) resumo.cotas += patrocinioDoJogador(mem, c, contas, rivais, w.ano, resultadoCampanha(p?.liga ?? 'serie-b', p?.pos ?? 10, titulos), w.jogador, w.rngJogador);
     resumo.cotas += renovarCotas(c, contas, mem.marcas, rivais, w.ano, resultadoCampanha(p?.liga ?? 'serie-b', p?.pos ?? 10, titulos), gerente(mem.gestao.get(c.clubeId)?.comissao).negociacao, w.rng);
     // SAF: níveis pendentes da entrada; depois a chance do ano.
     if (c.safEstrutura > 0) { subirEstrutura(mem, k, 'ct'); subirEstrutura(mem, k, 'base'); c.safEstrutura -= 1; }
@@ -161,11 +168,14 @@ export function viradaContas(mem: Memoria, w: MundoContas): ResumoFinancas {
       subirEstrutura(mem, k, 'base');
       c.safEstrutura -= 1;
     }
+    // Obras do jogador que passam da virada seguem a contagem no ano novo (5a2).
+    for (const o of c.obras) o.dia -= F.diasMes * F.meses;
     // IA: sobe 1 nível se o caixa passa de 50% da receita e cobre o custo; Formador prioriza a base (GDD-gestao 11).
     const tipo: 'ct' | 'base' = c.perfil === 'Formador' ? 'base' : 'ct';
     const atual = (tipo === 'ct' ? k.estruturaCT : k.estruturaBase) ?? 10;
     const obra = custoObra(atual + 1);
-    const quer = atual < F.estrutura.max && c.caixa > receita * F.estrutura.caixa && c.caixa >= obra;
+    const manual = comercialManual(mem, c.clubeId);
+    const quer = !manual && atual < F.estrutura.max && c.caixa > receita * F.estrutura.caixa && c.caixa >= obra;
     if (quer && !avalDaDiretoria(mem, c.clubeId)) mem.dir.aval.estrutura += 1;
     else if (quer) {
       c.caixa -= obra;
@@ -173,7 +183,7 @@ export function viradaContas(mem: Memoria, w: MundoContas): ResumoFinancas {
       c.obras.push({ tipo, dia: F.estrutura.dias });
       resumo.obras += 1;
     }
-    amortizar(c, receita);
+    if (!manual) amortizar(c, receita);
     orcamentoETeto(c, receita, folhaMil(mem, c.clubeId));
     const compra = c.perfil !== 'Gigante endividado' && c.perfil !== 'Pequeno sobrevivente';
     c.credito = compra && mem.financeiro.get(c.clubeId) === 'Gastador' && c.caixa >= 0 && avalDaDiretoria(mem, c.clubeId) ? receita * F.credito : 0;

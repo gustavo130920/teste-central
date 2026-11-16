@@ -57,6 +57,10 @@ export const FINANCAS = {
     /** PROVISORIO: mal na tabela = entre os 4 últimos da liga, depois de 5 jogos. */
     malNaTabela: { ultimos: 4, jogos: 5 },
     marketing: 0.005,
+    /** GDD-gestao 7: cada 10% acima do ingresso de referência, −6% na ocupação; abaixo, +6% (5a2). */
+    preco: 0.6,
+    /** Preço 30% acima da referência: −P no Humor por mês; 30% abaixo: +P. */
+    humorPreco: 0.3,
   },
   /** Delegado ao gerente: + (Ingressos e sócio − 10) × 0,5% de receita de bilheteria e sócio. */
   ingressos: 0.005,
@@ -65,6 +69,8 @@ export const FINANCAS = {
     /** PROVISORIO: "mais Marketing" = × (1 + (Marketing − 10) × 0,1%) por mês. */
     marketing: 0.001,
     maxCapacidade: 3,
+    /** GDD-gestao 7: cada 10% de aumento na mensalidade, −4% de sócios. PROVISORIO (5a2): a queda vale +4% por 10%. */
+    preco: 0.4,
   },
   patrocinio: {
     negociacao: 0.01,
@@ -152,6 +158,11 @@ export interface Conta {
   cotas: Cota[];
   ingresso: number;
   mensalidade: number;
+  /** Preços de referência (os da ficha); a IA joga sempre neles (5a2). */
+  ingressoRef: number;
+  mensalidadeRef: number;
+  /** Preços manuais do clube do jogador: sem o bônus do gerente (GDD-gestao 7, 5a2). */
+  precoManual?: boolean;
   socios: number;
   ocupacaoBase: number;
   /** Lugares no estádio. */
@@ -182,7 +193,7 @@ export function criarConta(f: FichaComercial, clube: Clube): Conta {
   return {
     clubeId: f.clubeId, perfil: f.perfil, candidato: null, caixa: f.caixa, divida: f.divida, banco: 0,
     tvBonusInicial: f.tvBonus, torcidaInicial: clube.torcidaTamanho ?? 10, tvFator: 1,
-    cotas: f.cotas.map((c) => ({ ...c })), ingresso: f.ingresso, mensalidade: f.mensalidade, socios: f.socios, ocupacaoBase: f.ocupacao,
+    cotas: f.cotas.map((c) => ({ ...c })), ingresso: f.ingresso, mensalidade: f.mensalidade, ingressoRef: f.ingresso, mensalidadeRef: f.mensalidade, socios: f.socios, ocupacaoBase: f.ocupacao,
     capacidade: (clube.capacidadeMil ?? 0) * 1000, tecnico: f.tecnico,
     ctInicial: clube.estruturaCT ?? 10, baseInicial: clube.estruturaBase ?? 10, obras: [], safEstrutura: 0,
     saf: f.saf ? { ...f.saf } : null, aporteAno: f.perfil === 'Emergente' ? 0 : null,
@@ -201,17 +212,30 @@ export function gerente(c: ComissaoClube | undefined): { negociacao: number; ing
 
 export interface JogoEmCasa { classico: boolean; decisao: boolean; libertadores: boolean; malNaTabela: boolean }
 
-/** Ocupação do jogo em casa (GDD-gestao 7), com preço na referência (IA). */
+/** Fator do preço na ocupação: cada 10% acima da referência, −6% (5a2); nunca abaixo de 0,1. */
+export const fatorPreco = (conta: Conta): number => Math.max(0.1, 1 - FINANCAS.bilheteria.preco * (conta.ingresso / (conta.ingressoRef || conta.ingresso) - 1));
+
+/** Bônus do gerente com os preços delegados (GDD-gestao 7); no manual, nenhum. */
+const bonusIngressos = (conta: Conta, ingressos: number): number => (conta.precoManual ? 1 : 1 + (ingressos - 10) * FINANCAS.ingressos);
+
+/** Ocupação do jogo em casa (GDD-gestao 7). */
 export function ocupacao(conta: Conta, jogo: JogoEmCasa, marketing: number, humor: number = FINANCAS.humor): number {
   const b = FINANCAS.bilheteria;
   const j = b.jogo;
   const fJogo = (jogo.classico ? j.classico : 1) * (jogo.decisao ? j.decisao : 1) * (jogo.libertadores ? j.libertadores : 1) * (jogo.malNaTabela ? j.malNaTabela : 1);
-  return Math.min(1, conta.ocupacaoBase * (b.humor.base + humor / b.humor.div) * fJogo * (1 + (marketing - 10) * b.marketing));
+  return Math.min(1, conta.ocupacaoBase * (b.humor.base + humor / b.humor.div) * fJogo * (1 + (marketing - 10) * b.marketing) * fatorPreco(conta));
+}
+
+/** Nova mensalidade: cada 10% de aumento, −4% de sócios (queda: +4%), até 3× a capacidade (5a2). */
+export function mudarMensalidade(c: Conta, nova: number): void {
+  const s = FINANCAS.socios;
+  c.socios = Math.max(0, Math.min(c.capacidade * s.maxCapacidade, c.socios * (1 - s.preco * (nova / c.mensalidade - 1))));
+  c.mensalidade = nova;
 }
 
 /** Bilheteria de um jogo em casa (R$ mi), lançada na conta. */
 export function lancarBilheteria(conta: Conta, jogo: JogoEmCasa, g: ReturnType<typeof gerente>, humor: number = FINANCAS.humor): number {
-  const v = (conta.capacidade * ocupacao(conta, jogo, g.marketing, humor) * conta.ingresso) / 1e6 * (1 + (g.ingressos - 10) * FINANCAS.ingressos);
+  const v = (conta.capacidade * ocupacao(conta, jogo, g.marketing, humor) * conta.ingresso) / 1e6 * bonusIngressos(conta, g.ingressos);
   conta.ano.bilheteria += v;
   conta.caixa += v;
   return v;
@@ -247,7 +271,7 @@ export function fecharMes(c: Conta, m: Mes): { atrasados: number; avalNegado: bo
   const a = c.ano;
   const tv = ((F.tvFixa[m.liga] ?? 0) + c.tvBonusInicial * (m.torcida / c.torcidaInicial)) * c.tvFator / F.meses;
   const pat = c.cotas.reduce((s, x) => s + x.valor, 0) / F.meses;
-  const socios = (c.socios * c.mensalidade) / 1e6 * (1 + (m.gerente.ingressos - 10) * F.ingressos);
+  const socios = (c.socios * c.mensalidade) / 1e6 * bonusIngressos(c, m.gerente.ingressos);
   const manut = F.estrutura.manutencao * m.niveisAcima;
   const juros = c.divida * F.juros * (c.caixa < 0 ? F.jurosNegativo : 1);
   const folha = m.folhaMil / 1000;
@@ -285,6 +309,53 @@ export function premioCopa(copa: string, chegou: string): number {
 export function resultadoCampanha(liga: string, posicao: number, copas: number): number {
   const p = FINANCAS.patrocinio;
   return Math.max(p.min, Math.min(p.max, faixa(p.resultado[liga] ?? p.resultado['serie-b'], posicao) + copas * p.copa));
+}
+
+/** Proposta de marca para uma cota vencida (patrocínio manual, 5a2). */
+export interface PropostaPatrocinio { marca: string; valor: number; anos: number; teto: number }
+
+/** PROVISORIO (5a2): 3 marcas com Negociação 15+, senão 2; valor da renovação × 0,9 a 1,1, até o teto; sem acordo, a atual a × 0,8 por 1 ano. */
+export const PATROCINIO_MANUAL = {
+  propostas: { poucas: 2, muitas: 3, negociacao: 15 },
+  variacao: [0.9, 1.1] as [number, number],
+  /** Chance de a marca desistir ao pedir +10% ou +20%, menos (Negociação − 10) × 2 pontos (Gustavo, 15/11/2026). */
+  desiste: { 10: 25, 20: 50 } as Record<number, number>,
+  negociacao: 2,
+  semAcordo: 0.8,
+};
+
+/**
+ * Marcas que o gerente traz para a cota vencida: a atual e as do mesmo tipo (material ou não) fora das outras cotas do
+ * clube, sem rival e com menos de 3 clubes, as de teto mais perto do valor da renovação.
+ */
+export function propostasPatrocinio(c: Conta, cota: Cota, contas: Conta[], marcas: Marca[], rivais: Set<string>, resultado: number, negociacao: number, rng: Rng): PropostaPatrocinio[] {
+  const P = PATROCINIO_MANUAL;
+  const base = cota.valor * (1 + resultado / 10) * (1 + negociacao * FINANCAS.patrocinio.negociacao);
+  const material = cota.tipo === 'Material';
+  const usuarios = (nome: string): Conta[] => contas.filter((o) => o !== c && o.cotas.some((x) => x.marca === nome));
+  const atual = marcas.find((m) => m.nome === cota.marca);
+  const outras = marcas.filter((m) => m !== atual && ehMaterial(m) === material && !c.cotas.some((x) => x.marca === m.nome)
+    && usuarios(m.nome).length < FINANCAS.patrocinio.maxClubes && !usuarios(m.nome).some((o) => rivais.has(o.clubeId)))
+    .sort((x, y) => Math.abs(x.teto - base) - Math.abs(y.teto - base) || (x.nome < y.nome ? -1 : 1));
+  const n = negociacao >= P.propostas.negociacao ? P.propostas.muitas : P.propostas.poucas;
+  const escolhidas = [...(atual ? [atual] : []), ...outras].slice(0, n);
+  return escolhidas.map((m) => {
+    const v = m === atual ? 1 : P.variacao[0] + (P.variacao[1] - P.variacao[0]) * rng.n();
+    return { marca: m.nome, valor: Math.min(m.teto, base * v), anos: rng.int(...FINANCAS.patrocinio.duracao), teto: m.teto };
+  });
+}
+
+/** Chance (%) de a marca desistir quando o jogador pede mais. */
+export const chanceDesistir = (pedido: number, negociacao: number): number =>
+  pedido <= 0 ? 0 : Math.max(0, Math.min(100, (PATROCINIO_MANUAL.desiste[pedido] ?? 50) - (negociacao - 10) * PATROCINIO_MANUAL.negociacao));
+
+/** Fecha a cota com a proposta (pedindo 0, 10 ou 20% a mais, até o teto da marca); false se a marca desistiu. */
+export function fecharPatrocinio(cota: Cota, p: PropostaPatrocinio, pedido: number, negociacao: number, ano: number, rng: Rng): boolean {
+  if (pedido > 0 && rng.pct(chanceDesistir(pedido, negociacao))) return false;
+  cota.marca = p.marca;
+  cota.valor = Math.min(p.teto, p.valor * (1 + pedido / 100));
+  cota.ate = FINANCAS.anoInicial + ano + p.anos;
+  return true;
 }
 
 export const premioLiga = (liga: string, posicao: number): number => faixa(FINANCAS.premioLiga[liga] ?? [[99, 0]], posicao);

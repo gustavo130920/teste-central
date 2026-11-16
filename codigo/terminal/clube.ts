@@ -1,5 +1,5 @@
 // Uso: npm run clube -- [SEMENTE] [--auto] [--entradas "1;Fulano;2;;;"] [--anos N]
-// Carreira com o clube do jogador (etapa 4, 8ª fatia, partes 8a, 8b1, 8b2 e 8b3; etapa 5, 5a1 base; GDD-gestao 1 e 8, GDD-motor 7). Leitura de teclado síncrona.
+// Carreira com o clube do jogador (etapa 4, 8ª fatia, partes 8a, 8b1, 8b2 e 8b3; etapa 5, 5a1 base, 5a2 comercial; GDD-gestao 1 e 8, GDD-motor 7). Leitura de teclado síncrona.
 // Enter em qualquer pergunta = "Avançar" (mantém o que está, ou deixa com a delegação).
 // --auto: Enter em tudo (teste rápido). --entradas: respostas na ordem, separadas por ";" (depois delas, Enter).
 import { readSync } from 'node:fs';
@@ -22,6 +22,9 @@ import type { InfoMercado, Termos, Visto } from '../temporada/mercadoJogador.ts'
 import { acharJogador, alternarTransferivel, buscar, chanceDaNegociacao, enviar, iniciarCompra, iniciarRenovacao, luvasEmMi, observar, relatorio, responder, ver } from '../temporada/mercadoJogador.ts';
 import type { InfoBase } from '../temporada/baseJogador.ts';
 import { dispensarJovem, pedirEmprestimo, subirJovem } from '../temporada/baseJogador.ts';
+import type { InfoComercial } from '../temporada/comercialJogador.ts';
+import { COMERCIAL_JOGADOR, amortizarDivida, chanceDesistir, estrutura, iniciarObra, limiteEmprestimo, mudarPrecos, tomarEmprestimo } from '../temporada/comercialJogador.ts';
+import { custoObra } from '../gestao/financas.ts';
 import { carregarBase } from './carregar.ts';
 
 // ---------- Entrada ----------
@@ -104,18 +107,22 @@ const tecnico = criarTecnicoDoJogador({ nome: nomeTec, origem, estilo, formacaoC
 assumirClube(m.tecnicos, clube, tecnico);
 console.log(`\n${tecnico.nome} assume o ${clube.nome} (Reputação ${tecnico.reputacao}). ${antigo.nome} fica livre.`);
 
-// Delegação (GDD-gestao 8). Comercial segue com a IA; a base começa com o coordenador (5a1).
+// Delegação (GDD-gestao 8). Comercial começa com o gerente (5a2); a base, com o coordenador (5a1).
 const delegado: Record<Area, boolean> = { tatica: false, treino: false, imprensa: false, mercado: false, comercial: true, base: true };
-const SO_IA: Area[] = ['comercial'];
-const limites = { cargaMax: 'pesada' as Carga, tom: 'Humildade', idadeMinima: null as number | null };
+const SO_IA: Area[] = [];
+const limites = { cargaMax: 'pesada' as Carga, tom: 'Humildade', idadeMinima: null as number | null, preco: null as { min: number; max: number } | null };
 function menuDelegacao(): void {
   for (;;) {
     console.log('  Delegação: ' + (Object.keys(AREAS) as Area[]).map((a, i) => `${i + 1}) ${AREAS[a]}: ${delegado[a] ? 'delegado' : 'você'}${SO_IA.includes(a) ? ' (manual depois)' : ''}`).join(' · '));
-    console.log(`  Limites: carga máxima ${limites.cargaMax} · tom padrão ${limites.tom} · idade mínima para subir ${limites.idadeMinima ?? 'livre'}. Atalhos: t) Técnico (campo com o auxiliar)  g) tudo com você  c) carga máxima  m) tom  i) idade mínima`);
-    const v = perguntar('  Mudar (número, t, g, c, m, i; Enter sai):');
+    console.log(`  Limites: carga máxima ${limites.cargaMax} · tom padrão ${limites.tom} · idade mínima para subir ${limites.idadeMinima ?? 'livre'} · preços do gerente ${limites.preco ? `${limites.preco.min * 100}% a ${limites.preco.max * 100}% da referência` : 'na referência'}. Atalhos: t) Técnico (campo com o auxiliar)  g) tudo com você  c) carga máxima  m) tom  i) idade mínima  p) preços do gerente`);
+    const v = perguntar('  Mudar (número, t, g, c, m, i, p; Enter sai):');
     if (!v) return;
     if (v === 't') { for (const a of ATALHOS.tecnico) delegado[a] = true; delegado.mercado = false; }
-    else if (v === 'g') for (const a of [...ATALHOS.tecnico, 'mercado' as Area, 'base' as Area]) delegado[a] = false;
+    else if (v === 'g') for (const a of [...ATALHOS.tecnico, 'mercado' as Area, 'base' as Area, 'comercial' as Area]) delegado[a] = false;
+    else if (v === 'p') {
+      const [a, b] = perguntar('  Preço mínimo e máximo do gerente, em % da referência (ex.: 90 120; Enter = referência):').split(/\s+/).map(Number);
+      limites.preco = a > 0 && b >= a ? { min: a / 100, max: b / 100 } : null;
+    }
     else if (v === 'i') { const n = Number(perguntar('  Idade mínima para o coordenador subir (16 a 19; Enter = livre):')); limites.idadeMinima = n >= 16 && n <= 19 ? n : null; }
     else if (v === 'c') limites.cargaMax = (['leve', 'normal', 'pesada'] as Carga[])[escolher('  Carga máxima 1) leve 2) normal 3) pesada:', 3) ?? 2];
     else if (v === 'm') limites.tom = perguntar('  Tom padrão (ex.: Humildade, Confiança):') || 'Humildade';
@@ -274,6 +281,32 @@ function telaBase(info: InfoBase, mem: Memoria): void {
     const j = jovens[k];
     const erro = v === 's' ? subirJovem(mem, clube.id, j.id) : v === 'x' ? dispensarJovem(mem, clube.id, j.id) : v === 'e' ? pedirEmprestimo(mem, clube.id, j.id, info.dia) : 'Opção inválida.';
     console.log(`  ${erro ?? (v === 's' ? `${j.nome} sobe ao profissional.` : v === 'x' ? `${j.nome} dispensado.` : `${j.nome}: o diretor procura um clube (resposta no próximo ciclo).`)}`);
+  }
+}
+
+/** 5a2: preços, empréstimo, amortização e obras (o patrocínio vem na virada). */
+function telaComercial(info: InfoComercial, mem: Memoria): void {
+  const L = COMERCIAL_JOGADOR.preco;
+  for (;;) {
+    const c = mem.financas.get(clube.id)!;
+    const ct = estrutura(mem, clube.id, 'ct'), bs = estrutura(mem, clube.id, 'base');
+    const obra = (e: typeof ct): string => (e.obra !== null ? ` (obra até o dia ${e.obra})` : ` (+1: R$ ${custoObra(e.nivel + 1).toFixed(1)} mi)`);
+    const pct = (v: number, ref: number): string => `${v >= ref ? '+' : ''}${((v / ref - 1) * 100).toFixed(0)}%`;
+    console.log(`--- Comercial (mês ${info.mes + 1}) · caixa R$ ${c.caixa.toFixed(1)} mi · dívida R$ ${c.divida.toFixed(1)} mi (banco ${c.banco.toFixed(1)}; cabe mais ${limiteEmprestimo(c).toFixed(1)}) · Humor ${(mem.humor.get(clube.id) ?? 50).toFixed(0)} ---`);
+    console.log(`    Ingresso R$ ${c.ingresso.toFixed(0)} (${pct(c.ingresso, c.ingressoRef)} da referência) · mensalidade R$ ${c.mensalidade.toFixed(0)} (${pct(c.mensalidade, c.mensalidadeRef)}) · ${Math.round(c.socios)} sócios${info.podeMudarPreco ? '' : ' · preços já mudaram neste mês'}`);
+    console.log(`    CT ${ct.nivel}${obra(ct)} · base ${bs.nivel}${obra(bs)} · cotas: ${c.cotas.map((x) => `${x.tipo} ${x.marca} R$ ${x.valor.toFixed(1)} mi até ${x.ate}`).join(' · ')}`);
+    const v = perguntar('  p) preços  e) empréstimo  a) amortizar  o) obra  d) delegação  Enter = segue:');
+    if (!v) return;
+    let erro: string | null = 'Opção inválida.';
+    if (v === 'd') { menuDelegacao(); if (delegado.comercial) return; continue; }
+    if (v === 'p') {
+      const [a, b] = perguntar(`  Ingresso e mensalidade em R$ (${L.min * 100}% a ${L.max * 100}% da referência R$ ${c.ingressoRef.toFixed(0)} e R$ ${c.mensalidadeRef.toFixed(0)}; "-" mantém):`).split(/\s+/);
+      const num = (x: string | undefined): number | undefined => (x && x !== '-' && Number(x) > 0 ? Number(x) : undefined);
+      erro = mudarPrecos(mem, clube.id, info.dia, { ingresso: num(a), mensalidade: num(b) });
+    } else if (v === 'e') erro = tomarEmprestimo(mem, clube.id, Number(perguntar('  Valor em R$ mi:')));
+    else if (v === 'a') erro = amortizarDivida(mem, clube.id, Number(perguntar('  Valor em R$ mi:')));
+    else if (v === 'o') { const k = escolher('  Obra: 1) CT  2) base:', 2); erro = k === null ? null : iniciarObra(mem, clube.id, k === 0 ? 'ct' : 'base', info.dia); }
+    console.log(`  ${erro ?? 'Feito.'}`);
   }
 }
 
@@ -464,6 +497,24 @@ const controle: ControleJogador = {
     if (auto && !fila.length) return 'manual';
     telaBase(info, mem);
     return 'manual';
+  },
+  comercial(info, mem) {
+    const st = mem.comercialJogador;
+    if (st?.avisos.length) { for (const a of st.avisos) console.log(`  ${a}`); st.avisos = []; }
+    if (delegado.comercial) return limites.preco;
+    if (auto && !fila.length) return 'manual';
+    telaComercial(info, mem);
+    return 'manual';
+  },
+  patrocinio(p) {
+    if (delegado.comercial) return null;
+    console.log(`
+=== Patrocínio ${p.tipo}: ${p.marcaAtual} (R$ ${p.valorAtual.toFixed(1)} mi) venceu${p.desistiram.length ? ` · desistiram: ${p.desistiram.join(', ')}` : ''} ===`);
+    p.propostas.forEach((x, i) => console.log(`  ${i + 1}) ${x.marca}: R$ ${x.valor.toFixed(1)} mi/ano por ${x.anos} ano(s) (teto da marca R$ ${x.teto.toFixed(1)} mi)`));
+    const k = escolher('  Marca (Enter = o gerente decide):', p.propostas.length);
+    if (k === null) return null;
+    const v = perguntar(`  Pedir mais? 0) não  1) +10% (desiste ${chanceDesistir(10, p.negociacao)}%)  2) +20% (desiste ${chanceDesistir(20, p.negociacao)}%) (Enter = não):`);
+    return { escolha: k, pedido: v === '1' ? 10 : v === '2' ? 20 : 0 };
   },
   proposta(p) {
     const c = m.clubes.find((x) => x.id === p.clube);

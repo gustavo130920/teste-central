@@ -217,7 +217,7 @@ export function virar(m: Mundo, t: Temporada): Resumo {
   let financas: ResumoFinancas | undefined;
   if (m.memoria?.financas.size) {
     const copas = fasesDasCopas(t.jogos, (id) => t.copas.find((c) => c.id === id)?.campeao() ?? null);
-    financas = viradaContas(m.memoria, { ano: m.ano, clubes: m.clubes, tabelas: t.tabelas, copas, rng: criarRng(semearDeTexto(`${m.semente}-financas-${m.ano}`)) });
+    financas = viradaContas(m.memoria, { ano: m.ano, clubes: m.clubes, tabelas: t.tabelas, copas, rng: criarRng(semearDeTexto(`${m.semente}-financas-${m.ano}`)), jogador: m.jogador, rngJogador: criarRng(semearDeTexto(`${m.semente}-patrocinio-${m.ano}`)) });
   }
   // 2. Metas, investidor, eleição e contrato do técnico (6ª fatia; depois das finanças, que guardam o retrato do ano).
   if (m.memoria?.diretoria.size) {
