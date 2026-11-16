@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { pedir } from '@/nucleo/cliente';
-import type { Etapa, NovoJogo, Painel as P, PreJogo as PJ, Slot } from '@/nucleo/protocolo';
+import type { DecisaoTela, RespostaDecisao, Etapa, NovoJogo, Painel as P, PreJogo as PJ, Slot } from '@/nucleo/protocolo';
 import { PreJogo } from '@/telas/PreJogo';
 import { Partida } from '@/telas/Partida';
 import type { AoVivoTela } from '@/telas/Partida';
@@ -8,6 +8,7 @@ import { Fim } from '@/telas/Fim';
 import { Inicio } from '@/telas/Inicio';
 import { EscolhaClube } from '@/telas/EscolhaClube';
 import { Painel } from '@/telas/Painel';
+import { Decisao } from '@/telas/Decisao';
 import { Gestao } from '@/telas/Gestao';
 
 /** Pilha de telas: Esc volta uma tela (menos no painel, onde volta só pelo botão Início). */
@@ -19,6 +20,7 @@ export default function App() {
   const [ocupado, setOcupado] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const [pre, setPre] = useState<PJ | null>(null);
+  const [decisao, setDecisao] = useState<DecisaoTela | null>(null);
   const [aoVivo, setAoVivo] = useState<AoVivoTela | null>(null);
   const tela = pilha.at(-1)!;
   const raiz = useRef<HTMLDivElement>(null);
@@ -32,7 +34,13 @@ export default function App() {
   };
 
   /** 5d2: o Avançar e as respostas da partida levam ao painel, ao pré-jogo, à pausa ou ao fim. */
-  const receber = (e: Etapa, simulando: boolean) => {
+  const simRef = useRef(false);
+  const receber = (e: Etapa, pedidoSimulando: boolean) => {
+    // Uma decisão no meio de uma simulação não perde o modo: o resultado vem depois dela.
+    const simulando = pedidoSimulando || simRef.current;
+    simRef.current = e.tipo === 'decisao' ? simulando : false;
+    if (e.tipo === 'decisao') { setPainel(e.painel); setDecisao(e.decisao); return; }
+    setDecisao(null);
     if (e.tipo === 'painel') { setPainel(e.painel); setPilha(['painel']); return; }
     if (e.tipo === 'prejogo') { setPre(e.pre); setAoVivo(null); setPilha(['painel', 'prejogo']); return; }
     if (e.tipo === 'pausa') {
@@ -85,6 +93,7 @@ export default function App() {
       {tela === 'partida' && aoVivo && (
         <Partida v={aoVivo} ocupado={ocupado} erro={erro} aoResponder={(r) => etapa(() => pedir('pausa', r), !!r.simularResto)} aoVerFim={() => setPilha(['painel', 'fim'])} />
       )}
+      {decisao && <Decisao d={decisao} ocupado={ocupado} erro={erro} aoResponder={(r: RespostaDecisao) => etapa(() => pedir('decidir', r), false)} />}
       {tela === 'fim' && aoVivo?.fim && <Fim v={aoVivo} aoVoltar={() => setPilha(['painel'])} />}
     </div>
   );

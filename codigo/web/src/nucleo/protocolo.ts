@@ -232,6 +232,44 @@ export type PedidoMercado =
   | { acao: 'enviar'; neg: number; termos: TermosTela };
 export interface ResultadoMercado { erro: string | null; msg: string | null; tela: MercadoTela }
 
+// ---------- Decisões no meio do ciclo (5d3c) ----------
+
+export type DecisaoTela =
+  | { tipo: 'evento'; titulo: string; texto: string; opcoes: { letra: string; texto: string; chance: number | null }[] }
+  | { tipo: 'coletiva'; assunto: string; pergunta: string; respostas: { tom: string; texto: string }[]; ultimosTons: string[] }
+  | { tipo: 'proposta'; clube: string; liga: string; reputacao: number; confianca: number; empregado: boolean; ultimoB: boolean; suaReputacao: number; clubeAtual: string | null }
+  | { tipo: 'renovacao'; clube: string; anos: number; confianca: number; avaliacao: string }
+  | { tipo: 'meta'; metas: { nivel: string; texto: string; bonus: number }[] }
+  | { tipo: 'patrocinio'; cota: string; marcaAtual: string; valorAtual: number; propostas: { marca: string; valor: number; anos: number; teto: number }[]; desistiram: string[]; chanceDesistir: { 10: number; 20: number } };
+
+/** Resposta: null = o padrão (evento "Avançar", coletiva com a assessoria, proposta como a regra, renovação sorteada, meta da diretoria, patrocínio com o gerente). */
+export type RespostaDecisao =
+  | { tipo: 'evento'; letra: string | null }
+  | { tipo: 'coletiva'; tom: string | null; assessoria: boolean }
+  | { tipo: 'proposta'; aceitar: boolean | null }
+  | { tipo: 'renovacao'; anos: number | null }
+  | { tipo: 'meta'; nivel: string | null }
+  | { tipo: 'patrocinio'; escolha: number | null; pedido: 0 | 10 | 20 };
+
+// ---------- Diretoria (5d3c, leitura) ----------
+export interface DiretoriaTela {
+  confianca: number;
+  humor: number | null;
+  semVencer: number;
+  nivel: string;
+  meta: string | null;
+  bonus: number | null;
+  paciencia: number;
+  ambicao: number;
+  financeiro: string;
+  interferencia: string;
+  popularidade: number;
+  eleicao: number | null;
+  contratoAte: number;
+  saf: boolean;
+  investidor: string | null;
+}
+
 export interface NovoJogo { clube: string; nome: string; origem: Origem; semente: number }
 
 // ---------- Partida ao vivo (5d2) ----------
@@ -342,6 +380,7 @@ export interface FimJogo {
 /** Para onde o Avançar levou: painel, pré-jogo, pausa ou fim da partida (com o trecho de narração desde o último passo). */
 export type Etapa =
   | { tipo: 'painel'; painel: Painel }
+  | { tipo: 'decisao'; decisao: DecisaoTela; painel: Painel }
   | { tipo: 'prejogo'; pre: PreJogo }
   | { tipo: 'pausa'; jogo: InfoJogoTela; nomes: Record<string, string>; linhas: Narrada[]; pausa: TelaPausa }
   | { tipo: 'fim'; jogo: InfoJogoTela; nomes: Record<string, string>; linhas: Narrada[]; fim: FimJogo; painel: Painel };
@@ -352,6 +391,7 @@ export interface Pedidos {
   avancar: { pede: void; volta: Etapa };
   preJogo: { pede: EscolhaPreJogo; volta: Etapa };
   pausa: { pede: RespostaPausa; volta: Etapa };
+  decidir: { pede: RespostaDecisao; volta: Etapa };
   painel: { pede: void; volta: Painel | null };
   elenco: { pede: void; volta: ElencoTela };
   treino: { pede: void; volta: TreinoTela };
@@ -360,6 +400,7 @@ export interface Pedidos {
   comercial: { pede: void; volta: ComercialTela };
   agirComercial: { pede: PedidoComercial; volta: ResultadoComercial };
   mercado: { pede: void; volta: MercadoTela };
+  diretoria: { pede: void; volta: DiretoriaTela | null };
   agirMercado: { pede: PedidoMercado; volta: ResultadoMercado };
   buscarMercado: { pede: FiltroTela; volta: VistoTela[] };
   relatorioMercado: { pede: string; volta: string[] };

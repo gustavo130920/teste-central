@@ -7,6 +7,11 @@ import type { Mundo } from '../../../temporada/virada.ts';
 import { cicloEmPassos, copasDe, tabelaAtual } from '../../../temporada/temporada.ts';
 import type { DiaEmPassos, JogoDisputado, RespostaDoDia } from '../../../temporada/temporada.ts';
 import type { AoVivo, Contexto } from './partida.ts';
+import type { PedidoColetiva, PedidoEvento } from '../../../temporada/jogador.ts';
+import type { PedidoPatrocinio, RespostaPatrocinio } from '../../../temporada/comercialJogador.ts';
+import type { PropostaTecnico } from '../../../temporada/diretoria.ts';
+import type { Meta, NivelMeta } from '../../../gestao/diretoria.ts';
+import { chanceDesistir } from '../../../temporada/comercialJogador.ts';
 import { ajusteDaResposta, aplicarPreJogo, fimJogo, infoJogoTela, novasLinhas, novoAoVivo, parcial, preJogo, telaPausa } from './partida.ts';
 import { estadoBase, dispensarJovem, pedirEmprestimo, subirJovem } from '../../../temporada/baseJogador.ts';
 import { amortizarDivida, estadoComercial, estrutura, iniciarObra, limiteEmprestimo, mesDoDia, mudarPrecos, tomarEmprestimo, COMERCIAL_JOGADOR } from '../../../temporada/comercialJogador.ts';
@@ -22,7 +27,7 @@ import { estadoTatica, progressoDe } from '../../../temporada/taticaJogador.ts';
 import { assumirClube, criarTecnicoDoJogador } from '../../../temporada/jogador.ts';
 import { carregar, salvar } from '../../../temporada/salvamento.ts';
 import { comprimir, descomprimir, apagar, gravar, ler, listar } from './saves.ts';
-import type { FiltroTela, MercadoTela, NegTela, PedidoMercado, ResultadoMercado, TermosTela, VistoTela, BaseTela, ComercialTela, PedidoBase, PedidoComercial, ResultadoBase, ResultadoComercial, Carga, Foco, ElencoTela, TreinoTela, ClubeResumo, Etapa, EscolhaPreJogo, RespostaPausa, InfoSlot, JogoTela, NovoJogo, Painel, Pedido, Pedidos, Resposta, ResumoVirada, Slot, TipoPedido } from './protocolo.ts';
+import type { DiretoriaTela, DecisaoTela, RespostaDecisao, FiltroTela, MercadoTela, NegTela, PedidoMercado, ResultadoMercado, TermosTela, VistoTela, BaseTela, ComercialTela, PedidoBase, PedidoComercial, ResultadoBase, ResultadoComercial, Carga, Foco, ElencoTela, TreinoTela, ClubeResumo, Etapa, EscolhaPreJogo, RespostaPausa, InfoSlot, JogoTela, NovoJogo, Painel, Pedido, Pedidos, Resposta, ResumoVirada, Slot, TipoPedido } from './protocolo.ts';
 
 const arquivos = import.meta.glob('../../../gerado/*.json', { eager: true, import: 'default' }) as Record<string, unknown>;
 /** Base nova a cada jogo: a carreira muda elencos e fichas (o mundo não copia tudo). */
@@ -81,12 +86,75 @@ function novoJogo(p: NovoJogo): Painel {
 
 // ---------- Ciclo em passos e partida ao vivo (5d2) ----------
 
-/** Ciclo em andamento: só existe entre o pré-jogo e o fim da partida do clube do jogador. */
-let ciclo: { it: DiaEmPassos; aoVivo: AoVivo | null } | null = null;
+/** Pergunta do motor ao jogador no meio do ciclo (5d3c). */
+type PedidoDecisao =
+  | { tipo: 'evento'; p: PedidoEvento }
+  | { tipo: 'coletiva'; p: PedidoColetiva }
+  | { tipo: 'proposta'; p: PropostaTecnico }
+  | { tipo: 'renovacao'; p: { clube: string; anos: number; confianca: number; avaliacao: string } }
+  | { tipo: 'meta'; metas: Record<NivelMeta, Meta | null> }
+  | { tipo: 'patrocinio'; p: PedidoPatrocinio };
+
+/** Lançada pelos ganchos quando falta a resposta: o worker refaz o ciclo com ela (decisão do Gustavo, 5d3c). */
+class Pendencia extends Error {
+  pedido: PedidoDecisao;
+  constructor(pedido: PedidoDecisao) { super('pendência'); this.pedido = pedido; }
+}
+
+/** O que a tela mandou durante o ciclo, na ordem: reaplicado ao refazer o ciclo. */
+type EntradaLog = { tipo: 'pre'; e: EscolhaPreJogo } | { tipo: 'pausa'; r: RespostaPausa };
+
+/** Ciclo em andamento: do Avançar até o fim da partida do clube do jogador (ou da semana). */
+let ciclo: { it: DiaEmPassos; aoVivo: AoVivo | null; snap: string; log: EntradaLog[]; reproduz: EntradaLog[] | null; narradosPend: number } | null = null;
+/** Virada pendente de uma decisão (renovação ou patrocínio): o mundo antes de fechar o ano. */
+let viradaPend: { snap: string; a: AoVivo | null; linhas: ReturnType<typeof novasLinhas> } | null = null;
+/** Respostas dadas às decisões, na ordem em que o motor pergunta (o motor é determinístico). */
+let decisoes: unknown[] = [];
+let nDec = 0;
+let pendente: PedidoDecisao | null = null;
 
 function abandonarCiclo(): void {
   ciclo?.it.return([]);
   ciclo = null;
+  viradaPend = null;
+  decisoes = [];
+  nDec = 0;
+  pendente = null;
+}
+
+function decidir<T>(pedido: PedidoDecisao): T | null {
+  if (nDec < decisoes.length) return decisoes[nDec++] as T | null;
+  throw new Pendencia(pedido);
+}
+
+/** Liga os ganchos do jogador ao mundo (também depois de restaurar um estado). */
+function ligar(w: Mundo): void {
+  const J = w.jogador!;
+  // O controle do jogador não vai no save (5c): o gancho do fim do jogo é posto a cada ciclo.
+  J.aoJogo = (d, r) => { if (ciclo?.aoVivo) ciclo.aoVivo.final = { d, r }; };
+  // Treino (5d3a): plano fixo do jogador, ou o auxiliar decide (null).
+  J.treino = () => extra.treino ?? null;
+  // Base, comercial e mercado (5d3b): manual quando o jogador escolheu; senão a IA.
+  J.base = () => (extra.base?.manual ? 'manual' : extra.base?.idadeMinima ? { idadeMinima: extra.base.idadeMinima } : null);
+  J.comercial = () => (extra.comercial ? 'manual' : null);
+  J.mercado = () => (extra.mercado ? true : null);
+  // Decisões (5d3c): param o ciclo e perguntam à tela.
+  J.evento = (p) => decidir<string>({ tipo: 'evento', p });
+  J.coletiva = (p) => decidir<{ tom: string; assessoria: boolean }>({ tipo: 'coletiva', p });
+  J.proposta = (p) => decidir<boolean>({ tipo: 'proposta', p });
+  J.renovacao = (p) => decidir<number>({ tipo: 'renovacao', p });
+  J.meta = (metas) => decidir<NivelMeta>({ tipo: 'meta', metas });
+  J.patrocinio = (p) => (extra.comercial ? decidir<RespostaPatrocinio>({ tipo: 'patrocinio', p }) : null);
+}
+
+/** Troca o mundo pelo estado guardado (o controle do jogador é posto de novo). */
+function restaurar(snap: string): Mundo {
+  const s = carregar<ExtraWeb>(snap);
+  const t = tecnicoDoJogador(s.mundo);
+  s.mundo.jogador = { clube: t.clubeId ?? extra.clubeTela };
+  m = s.mundo;
+  ligar(m);
+  return m;
 }
 
 function contexto(w: Mundo): Contexto {
@@ -95,32 +163,76 @@ function contexto(w: Mundo): Contexto {
 
 const nomesDe = (w: Mundo) => Object.fromEntries(w.clubes.map((x) => [x.id, x.nomeCurto]));
 
+function criarCiclo(w: Mundo) {
+  const s = w.emAndamento ?? iniciarAno(w, extra.semente);
+  return cicloEmPassos(s, { jogador: w.jogador!, interativo: true });
+}
+
 function avancar(): Promise<Etapa> {
   const w = exigir();
-  if (ciclo) throw new Error('Há uma partida em andamento.');
+  if (ciclo || viradaPend) throw new Error('Há uma partida ou decisão em andamento.');
   virada = null;
-  const s = w.emAndamento ?? iniciarAno(w, extra.semente);
-  const J = w.jogador!;
-  // O controle do jogador não vai no save (5c): o gancho do fim do jogo é posto aqui a cada ciclo.
-  J.aoJogo = (d, r) => { if (ciclo?.aoVivo) ciclo.aoVivo.final = { d, r }; };
-  // Treino (5d3a): plano fixo do jogador, ou o auxiliar decide (null).
-  J.treino = () => extra.treino ?? null;
-  // Base e comercial (5d3b1): manual quando o jogador escolheu; senão a IA (com idade mínima na base delegada).
-  J.base = () => (extra.base?.manual ? 'manual' : extra.base?.idadeMinima ? { idadeMinima: extra.base.idadeMinima } : null);
-  J.comercial = () => (extra.comercial ? 'manual' : null);
-  J.mercado = () => (extra.mercado ? true : null);
-  ciclo = { it: cicloEmPassos(s, { jogador: J, interativo: true }), aoVivo: null };
+  ligar(w);
+  decisoes = [];
+  nDec = 0;
+  if (!w.emAndamento) iniciarAno(w, extra.semente);
+  // Estado do início do ciclo: se o motor pedir uma decisão, o ciclo é refeito daqui com a resposta.
+  const snap = salvar(w, extra);
+  ciclo = { it: criarCiclo(w), aoVivo: null, snap, log: [], reproduz: null, narradosPend: 0 };
   return conduzir(undefined);
 }
 
-/** Roda o ciclo até o próximo pedido (pré-jogo ou pausa) ou até o fim. */
+function decisaoTela(w: Mundo, d: PedidoDecisao): DecisaoTela {
+  const nomeClube = (id: string | null) => (id ? w.clubes.find((c) => c.id === id)?.nome ?? id : null);
+  if (d.tipo === 'evento') return { tipo: 'evento', titulo: d.p.modelo.titulo, texto: d.p.texto, opcoes: d.p.opcoes };
+  if (d.tipo === 'coletiva') return { tipo: 'coletiva', assunto: d.p.assunto, pergunta: d.p.pergunta, respostas: d.p.respostas, ultimosTons: d.p.ultimosTons };
+  if (d.tipo === 'proposta') {
+    const t = tecnicoDoJogador(w);
+    return { tipo: 'proposta', clube: nomeClube(d.p.clube)!, liga: d.p.liga, reputacao: d.p.reputacao, confianca: d.p.confianca, empregado: d.p.empregado, ultimoB: d.p.motivo === 'ultimo-b', suaReputacao: t.reputacao, clubeAtual: d.p.empregado ? nomeClube(t.clubeId) : null };
+  }
+  if (d.tipo === 'renovacao') return { tipo: 'renovacao', clube: nomeClube(d.p.clube)!, anos: d.p.anos, confianca: d.p.confianca, avaliacao: d.p.avaliacao };
+  if (d.tipo === 'meta') return { tipo: 'meta', metas: (Object.keys(d.metas) as NivelMeta[]).filter((n) => d.metas[n]).map((n) => ({ nivel: n, texto: d.metas[n]!.texto, bonus: d.metas[n]!.bonus })) };
+  return {
+    tipo: 'patrocinio', cota: d.p.tipo, marcaAtual: d.p.marcaAtual, valorAtual: d.p.valorAtual, propostas: d.p.propostas, desistiram: d.p.desistiram,
+    chanceDesistir: { 10: chanceDesistir(10, d.p.negociacao), 20: chanceDesistir(20, d.p.negociacao) },
+  };
+}
+
+/** O motor parou numa pergunta: volta ao estado de antes e mostra a pergunta (o ciclo é refeito com a resposta). */
+function etapaDecisao(p: PedidoDecisao, snap: string): Etapa {
+  pendente = p;
+  const w = restaurar(snap);
+  return { tipo: 'decisao', decisao: decisaoTela(w, p), painel: painel(w) };
+}
+
+/** Roda o ciclo até o próximo pedido (pré-jogo, pausa ou decisão) ou até o fim. */
 async function conduzir(resposta: RespostaDoDia | undefined): Promise<Etapa> {
-  const w = exigir();
-  const s = w.emAndamento!;
+  let w = exigir();
+  let s = w.emAndamento!;
   const c = ciclo!;
   let p;
-  try { p = c.it.next(resposta as RespostaDoDia); } catch (e) { ciclo = null; throw e; }
-  while (!p.done) {
+  const proximo = (r: RespostaDoDia | undefined) => {
+    try {
+      const x = c.it.next(r as RespostaDoDia);
+      if (c.reproduz && c.reproduz.length === 0) { if (c.aoVivo) c.aoVivo.narrados = c.narradosPend; c.reproduz = null; }
+      return x;
+    } catch (e) {
+      if (e instanceof Pendencia) {
+        if (!c.reproduz) c.narradosPend = c.aoVivo?.narrados ?? 0;
+        c.reproduz = null;
+        return e;
+      }
+      ciclo = null;
+      throw e;
+    }
+  };
+  let r = proximo(resposta);
+  for (;;) {
+    if (r instanceof Pendencia) return etapaDecisao(r.pedido, c.snap);
+    p = r;
+    if (p.done) break;
+    w = exigir();
+    s = w.emAndamento!;
     const v = p.value;
     const ctx = contexto(w);
     if (v.tipo === 'escalar') {
@@ -128,12 +240,16 @@ async function conduzir(resposta: RespostaDoDia | undefined): Promise<Etapa> {
       const fase = copasDe(s).flatMap((cp) => cp.previstos(s.dia)).find((j) => j.dia === v.pedido.jogo.dia && (j.mandante === clube.id || j.visitante === clube.id))?.fase;
       const jogo = infoJogoTela(v.pedido.jogo, v.lado, clube.id, v.lado === 0 ? clube.estadio : w.clubes.find((x) => x.id === v.pedido.jogo.adversario)?.estadio ?? null, fase);
       c.aoVivo = novoAoVivo(jogo, v.pedido.jogo.dia);
+      const e = c.reproduz?.shift();
+      if (e?.tipo === 'pre') { c.aoVivo.simular = e.e.modo === 'simular'; r = proximo(aplicarPreJogo(ctx, e.e)); continue; }
       return { tipo: 'prejogo', pre: preJogo(ctx, v.pedido, jogo, nomesDe(w)) };
     }
     const a = c.aoVivo!;
     a.lances.push(...v.info.lances);
     a.info = v.info;
-    if (a.simular) { p = c.it.next(null); continue; }
+    if (a.simular) { r = proximo(null); continue; }
+    const e = c.reproduz?.shift();
+    if (e?.tipo === 'pausa') { if (e.r.simularResto) a.simular = true; r = proximo(ajusteDaResposta(ctx, v.info, e.r)); continue; }
     return { tipo: 'pausa', jogo: a.jogo, nomes: nomesDe(w), linhas: novasLinhas(ctx, a, parcial(v.info, a), v.info.minuto / 15), pausa: telaPausa(ctx, v.info) };
   }
   ciclo = null;
@@ -144,23 +260,45 @@ async function conduzir(resposta: RespostaDoDia | undefined): Promise<Etapa> {
     if (a.simular) a.narrados = 0;
     linhas = novasLinhas(contexto(w), a, a.final.r, 99);
   }
+  decisoes = [];
+  nDec = 0;
+  return terminar(a, linhas);
+}
+
+/** Fim do ciclo: vira o ano, se acabou, e monta a etapa final. */
+async function terminar(a: AoVivo | null, linhas: ReturnType<typeof novasLinhas>): Promise<Etapa> {
+  let w = exigir();
+  const s = w.emAndamento!;
   if (s.fim) {
-    const r = virar(w, concluirAno(w));
-    virada = { ano: r.ano, campeoes: r.campeoes, rebaixados: r.rebaixados, promovidos: r.promovidos };
-    iniciarAno(w, extra.semente);
+    // Renovação do técnico e patrocínio acontecem aqui: se faltar resposta, refaz a virada daqui.
+    const snap = viradaPend?.snap ?? salvar(w, extra);
+    nDec = 0;
+    try {
+      const r = virar(w, concluirAno(w));
+      virada = { ano: r.ano, campeoes: r.campeoes, rebaixados: r.rebaixados, promovidos: r.promovidos };
+      iniciarAno(w, extra.semente);
+    } catch (e) {
+      if (!(e instanceof Pendencia)) throw e;
+      viradaPend = { snap, a, linhas };
+      return etapaDecisao(e.pedido, snap);
+    }
+    viradaPend = null;
+    decisoes = [];
+    nDec = 0;
     // Slot automático gravado em toda virada (decisão do Gustavo, 5d1).
     await salvarEm('auto');
+    w = exigir();
   }
   const pn = painel(w);
   if (a?.final) return { tipo: 'fim', jogo: a.jogo, nomes: pn.nomes, linhas, fim: fimJogo(a, ultimos), painel: pn };
   return { tipo: 'painel', painel: pn };
 }
 
-
 function responderPreJogo(e: EscolhaPreJogo): Promise<Etapa> {
   const w = exigir();
   if (!ciclo?.aoVivo || ciclo.aoVivo.info) throw new Error('Nenhum pré-jogo aberto.');
   ciclo.aoVivo.simular = e.modo === 'simular';
+  ciclo.log.push({ tipo: 'pre', e });
   return conduzir(aplicarPreJogo(contexto(w), e));
 }
 
@@ -169,7 +307,35 @@ function responderPausa(r: RespostaPausa): Promise<Etapa> {
   const a = ciclo?.aoVivo;
   if (!a?.info) throw new Error('Nenhuma pausa aberta.');
   if (r.simularResto) a.simular = true;
+  ciclo!.log.push({ tipo: 'pausa', r });
   return conduzir(ajusteDaResposta(contexto(w), a.info, r));
+}
+
+/** Resposta da tela a uma decisão: guarda e refaz o ciclo (ou a virada) com ela. */
+async function responderDecisao(r: RespostaDecisao): Promise<Etapa> {
+  const d = pendente;
+  if (!d || d.tipo !== r.tipo) throw new Error('Nenhuma decisão aberta.');
+  pendente = null;
+  decisoes.push(
+    r.tipo === 'evento' ? r.letra
+      : r.tipo === 'coletiva' ? (r.tom ? { tom: r.tom, assessoria: r.assessoria } : null)
+        : r.tipo === 'proposta' ? r.aceitar
+          : r.tipo === 'renovacao' ? r.anos
+            : r.tipo === 'meta' ? r.nivel
+              : r.escolha === null ? null : { escolha: r.escolha, pedido: r.pedido },
+  );
+  if (viradaPend) {
+    const v = viradaPend;
+    restaurar(v.snap);
+    return terminar(v.a, v.linhas);
+  }
+  const c = ciclo!;
+  // O mundo já voltou ao início do ciclo (etapaDecisao): refaz com o que foi escolhido até aqui.
+  c.it = criarCiclo(exigir());
+  c.aoVivo = null;
+  nDec = 0;
+  c.reproduz = [...c.log];
+  return conduzir(undefined);
 }
 
 function exigir(): Mundo {
@@ -435,6 +601,21 @@ function chanceMercado(p: { neg: number; termos: TermosTela }): { chance: number
   return { chance: Math.round(chanceDaNegociacao(mem, prev)), luvasMi: luvasEmMi(prev) };
 }
 
+// ---------- Diretoria (5d3c) ----------
+function diretoriaTela(w: Mundo): DiretoriaTela | null {
+  const mem = w.emAndamento!.memoria;
+  const id = extra.clubeTela;
+  const d = mem.diretoria.get(id);
+  if (!d) return null;
+  const f = d.ficha;
+  const meta = d.metas[d.nivel];
+  return {
+    confianca: d.confianca, humor: mem.humor.get(id) ?? null, semVencer: d.semVencer, nivel: d.nivel, meta: meta?.texto ?? null, bonus: meta?.bonus ?? null,
+    paciencia: f.paciencia, ambicao: f.ambicao, financeiro: f.financeiro, interferencia: f.interferencia, popularidade: f.popularidade, eleicao: f.eleicao, contratoAte: d.contratoAte, saf: f.saf,
+    investidor: f.investidor ? `${f.investidor.tipo === 'receita' ? 'Receita' : 'Prejuízo'} ${f.investidor.valor} em ${f.investidor.prazo} anos; se falhar: ${f.investidor.falha}` : null,
+  };
+}
+
 // ---------- Saves ----------
 function infoDe(w: Mundo, slot: Slot, tamanho: number, criado = new Date().toISOString()): InfoSlot {
   const t = tecnicoDoJogador(w);
@@ -497,6 +678,7 @@ const tratar: Tratador = {
   clubes: () => clubes(),
   novoJogo: (p) => novoJogo(p),
   avancar: () => avancar(),
+  decidir: (r) => responderDecisao(r),
   preJogo: (e) => responderPreJogo(e),
   pausa: (r) => responderPausa(r),
   painel: () => (m ? painel(m) : null),
@@ -504,6 +686,7 @@ const tratar: Tratador = {
   treino: () => treinoTela(exigir()),
   definirTreino: (p) => definirTreino(p),
   mercado: () => mercadoTela(exigir()),
+  diretoria: () => diretoriaTela(exigir()),
   agirMercado: (p) => agirMercado(p),
   buscarMercado: (f) => buscarMercado(f),
   relatorioMercado: (id) => relatorioMercado(id),
