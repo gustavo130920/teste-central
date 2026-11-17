@@ -70,6 +70,8 @@ export interface Painel {
   caixa: number | null;
   /** Preenchido no ciclo em que o ano virou. */
   virada: ResumoVirada | null;
+  /** Sem clube: de onde saiu e por quê (aviso grande na tela). */
+  semClube: { clube: string; ano: number; motivo: string } | null;
 }
 
 export type Slot = 'auto' | '1' | '2' | '3' | '4' | '5';
@@ -290,7 +292,7 @@ export interface InfoJogoTela {
 export interface JogadorTela { id: string; nome: string; posicao: string; nota: number; condicao?: number; atributos?: Record<string, number>; tracos?: string[] }
 export interface VagaTela { id: string; nome: string; vaga: string; condicao?: number; /** Zona da formação (5e), no ponto de vista do próprio ataque. */ zona?: string }
 
-export interface TaticaTela { nome: string; estilo: string; formacaoComBola: string; formacaoSemBola: string; entrosamento: number; ajustes: string[]; instrucoes: number; batedores: Batedores; onze: VagaTela[] }
+export interface TaticaTela { nome: string; estilo: string; formacaoComBola: string; formacaoSemBola: string; entrosamento: number; ajustes: string[]; instrucoes: number; batedores: Batedores; onze: VagaTela[]; /** O onze é fixo (escolhido por você). */ titularesManual: boolean; /** Com onze fixo, o auxiliar troca só quem está cansado. */ poupar: boolean }
 
 export interface PreJogo {
   jogo: InfoJogoTela;
@@ -309,9 +311,52 @@ export interface EscolhaPreJogo {
   tatica: number;
   batedores: Batedores;
   marcacao: MarcacaoIndividual | null;
+  /** Onze escolhido no pré-jogo (11 ids); ausente = o da tática ou o auxiliar. */
+  titulares?: string[];
+  /** Com onze fixo, o auxiliar troca só quem está cansado (condição abaixo de 70). */
+  poupar: boolean;
+  /** Grava o onze e a opção de poupar na tática, para os próximos jogos. */
+  guardar?: boolean;
   /** 'simular': o auxiliar cuida das pausas e a tela vai direto ao resultado. */
   modo: 'aoVivo' | 'simular';
 }
+
+// ---------- Editor de táticas (5b4) ----------
+
+/** Jogador na plaquinha do campo: vaga e zona com e sem a bola, instruções (id) e as opções de cada fase. */
+export interface PlaqTela {
+  id: string; nome: string; nota: number; condicao: number; estado: 'ok' | 'lesionado' | 'suspenso';
+  vagaCom: string; zonaCom: string; vagaSem: string; zonaSem: string;
+  instrCom: string | null; instrSem: string | null;
+  opcoes: { Com: OpcaoInstrucaoTela[]; Sem: OpcaoInstrucaoTela[] };
+}
+export interface TaticaEditTela {
+  nome: string; estilo: string; formacaoComBola: string; formacaoSemBola: string;
+  /** Padrão em vigor (estilo mais ajustes) e os ajustes feitos. */
+  padrao: Record<string, string>; ajustes: string[];
+  entrosamento: number; batedores: Batedores;
+  /** true: o onze foi escolhido pelo jogador; false: o auxiliar escolhe. */
+  titularesManual: boolean;
+  onze: PlaqTela[];
+}
+export interface ElencoEditTela { id: string; nome: string; posicao: string; nota: number; condicao: number; estado: 'ok' | 'lesionado' | 'suspenso'; BP: number; Comp: number; tracos: string[] }
+export interface TaticasTela {
+  taticas: TaticaEditTela[];
+  ativa: number;
+  treinar: number;
+  max: number;
+  estilos: { nome: string; padrao: Record<string, string>; resumo: string }[];
+  formacoes: string[];
+  elenco: ElencoEditTela[];
+}
+export type PedidoTatica =
+  | { acao: 'editar'; i: number; nome?: string; estilo?: string; formacaoComBola?: string; formacaoSemBola?: string; padrao?: Record<string, string | null> }
+  | { acao: 'instrucao'; i: number; jogador: string; fase: 'Com' | 'Sem'; id: string | null }
+  | { acao: 'batedor'; i: number; tipo: TipoBatedor; jogador: string | null }
+  /** Põe `entra` no lugar de `sai` no onze da tática; sem os dois, o auxiliar volta a escolher. */
+  | { acao: 'titular'; i: number; sai?: string; entra?: string }
+  | { acao: 'duplicar' | 'apagar' | 'usar' | 'treinar'; i: number };
+export interface ResultadoTatica { erro: string | null; tela: TaticasTela }
 
 export interface Narrada { bloco: number; minuto: string; voz: 'N' | 'C'; texto: string; tema: string; placar: [number, number]; time: 0 | 1; gol: boolean }
 
@@ -401,6 +446,12 @@ export interface Pedidos {
   treino: { pede: void; volta: TreinoTela };
   base: { pede: void; volta: BaseTela };
   agirBase: { pede: PedidoBase; volta: ResultadoBase };
+  comissao: { pede: void; volta: ComissaoTela };
+  agirComissao: { pede: PedidoComissao; volta: ResultadoComissao };
+  taticas: { pede: void; volta: TaticasTela };
+  agirTatica: { pede: PedidoTatica; volta: ResultadoTatica };
+  /** Sai do pré-jogo sem jogar: o mundo volta ao início do ciclo (nada do ciclo vale) e o painel reaparece. */
+  cancelarPreJogo: { pede: void; volta: Painel };
   comercial: { pede: void; volta: ComercialTela };
   agirComercial: { pede: PedidoComercial; volta: ResultadoComercial };
   mercado: { pede: void; volta: MercadoTela };
@@ -421,3 +472,32 @@ export type TipoPedido = keyof Pedidos;
 
 export interface Pedido<T extends TipoPedido = TipoPedido> { id: number; tipo: T; dados: Pedidos[T]['pede'] }
 export type Resposta = { id: number; ok: true; resultado: unknown } | { id: number; ok: false; erro: string };
+
+// ---------- Comissão (5f) ----------
+
+export interface ProfTela {
+  nome: string; cargo: string; idade: number; nac: string;
+  /** Sigla, valor do arquivo e valor efetivo (com estrutura e química; só para quem já é da comissão). */
+  atributos: { sigla: string; valor: number; efetivo: number | null }[];
+  reputacao: number; ambicao: number; lealdade: number;
+  quimica: number | null; confianca: boolean;
+  /** R$ mil por mês. */
+  salario: number; contrato: number | null;
+}
+export interface CargoTela {
+  cargo: string;
+  atual: ProfTela | null;
+  /** Demissão (R$ mi) e pedido de renovação (R$ mil/mês), só com profissional no cargo. */
+  rescisaoMi: number | null; pedidoRenovacao: number | null;
+  livres: ProfTela[];
+}
+export interface ComissaoTela {
+  /** false: clube sem comissão nos dados. */
+  temComissao: boolean; janela: boolean; caixa: number | null; folhaMil: number; ano: number;
+  ct: number | null; base: number | null; cargos: CargoTela[];
+}
+export type PedidoComissao =
+  | { acao: 'contratar'; nome: string; oferta: number; anos: number }
+  | { acao: 'demitir'; cargo: string }
+  | { acao: 'renovar'; cargo: string; oferta: number; anos: number };
+export interface ResultadoComissao { erro: string | null; aviso: string | null; resposta: { tipo: 'aceita' | 'contra' | 'recusa'; valor: number; texto: string } | null; tela: ComissaoTela }

@@ -26,6 +26,10 @@ export interface TaticaSalva {
   padrao: Partial<PadraoTime>;
   instrucoes: InstrucoesManuais;
   batedores: Batedores;
+  /** Onze escolhido pelo jogador (5b4); ausente = o auxiliar escolhe. O motor completa o que faltar ou estiver fora. */
+  titulares?: string[];
+  /** Com onze fixo, o auxiliar troca só quem está cansado (padrão: sim). */
+  pouparCansados?: boolean;
 }
 
 export interface EstadoTaticaJogador {
@@ -88,16 +92,68 @@ export function mudarEstiloFormacao(mem: Memoria, clube: string, tatica: Tatica,
   mudarTatica(mem, clube, tatica, novo);
 }
 
-export function definirInstrucao(mem: Memoria, clube: string, jogador: string, fase: 'Com' | 'Sem', id: string | null): void {
-  const a = taticaAtiva(mem, clube);
+export function definirInstrucao(mem: Memoria, clube: string, jogador: string, fase: 'Com' | 'Sem', id: string | null, i?: number): void {
+  const a = i === undefined ? taticaAtiva(mem, clube) : estadoTatica(mem, clube).taticas[i];
+  if (!a) return;
   const x = { ...a.instrucoes[jogador] };
   if (id) x[fase] = id; else delete x[fase];
   if (x.Com || x.Sem) a.instrucoes[jogador] = x; else delete a.instrucoes[jogador];
 }
 
-export function definirBatedor(mem: Memoria, clube: string, tipo: TipoBatedor, jogador: string | null): void {
-  const a = taticaAtiva(mem, clube);
+export function definirBatedor(mem: Memoria, clube: string, tipo: TipoBatedor, jogador: string | null, i?: number): void {
+  const a = i === undefined ? taticaAtiva(mem, clube) : estadoTatica(mem, clube).taticas[i];
+  if (!a) return;
   if (jogador) a.batedores[tipo] = jogador; else delete a.batedores[tipo];
+}
+
+// ---------- Editor visual (5b4) ----------
+
+export interface EdicaoTatica {
+  nome?: string;
+  estilo?: string;
+  formacaoComBola?: string;
+  formacaoSemBola?: string;
+  /** Ajustes do padrão; null volta ao do estilo. */
+  padrao?: Partial<Record<keyof PadraoTime, string | null>>;
+  /** Onze escolhido (11 ids), ou null para o auxiliar escolher. */
+  titulares?: string[] | null;
+}
+
+/** Edita a tática i (estilo, formações, ajustes, nome, titulares). Na ativa, o técnico acompanha. Devolve o erro, ou null. */
+export function editarTatica(mem: Memoria, clube: string, tatica: Tatica, i: number, e: EdicaoTatica): string | null {
+  const s = estadoTatica(mem, clube);
+  const x = s.taticas[i];
+  if (!x) return 'Tática inexistente.';
+  if (e.estilo !== undefined && !tatica.estilos.some((t) => t.nome === e.estilo)) return 'Estilo fora do catálogo.';
+  for (const f of [e.formacaoComBola, e.formacaoSemBola]) if (f !== undefined && !tatica.formacoes.some((t) => t.nome === f)) return 'Formação fora do catálogo.';
+  if (e.nome !== undefined) x.nome = e.nome.trim().slice(0, 24) || x.nome;
+  if (e.estilo !== undefined && e.estilo !== x.estilo) { x.estilo = e.estilo; x.padrao = {}; }
+  if (e.formacaoComBola !== undefined) x.formacaoComBola = e.formacaoComBola;
+  if (e.formacaoSemBola !== undefined) x.formacaoSemBola = e.formacaoSemBola;
+  if (e.padrao) {
+    const base = tatica.estilos.find((t) => t.nome === x.estilo)!.padrao;
+    const novo: Record<string, string> = { ...x.padrao };
+    for (const [k, v] of Object.entries(e.padrao)) if (v === null || v === base[k as keyof PadraoTime]) delete novo[k]; else if (v !== undefined) novo[k] = v;
+    x.padrao = novo as Partial<PadraoTime>;
+  }
+  if (e.titulares !== undefined) { if (e.titulares) x.titulares = [...new Set(e.titulares)].slice(0, 11); else delete x.titulares; }
+  if (i === s.ativa) mudarTatica(mem, clube, tatica, { estilo: x.estilo, formacaoComBola: x.formacaoComBola, formacaoSemBola: x.formacaoSemBola });
+  return null;
+}
+
+/** Copia a tática i numa nova (até 3), sem mudar a que está em uso. */
+export function duplicarTatica(mem: Memoria, clube: string, i: number): string | null {
+  const s = estadoTatica(mem, clube);
+  const a = s.taticas[i];
+  if (!a) return 'Tática inexistente.';
+  if (s.taticas.length >= TATICA_JOGADOR.max) return `Já há ${TATICA_JOGADOR.max} táticas: apague uma antes.`;
+  s.taticas.push({ ...a, nome: `Tática ${s.taticas.length + 1}`, padrao: { ...a.padrao }, instrucoes: structuredClone(a.instrucoes), batedores: { ...a.batedores }, ...(a.titulares ? { titulares: [...a.titulares] } : {}) });
+  return null;
+}
+
+export function treinarTatica(mem: Memoria, clube: string, i: number): void {
+  const s = estadoTatica(mem, clube);
+  if (s.taticas[i]) s.treinar = i;
 }
 
 /** Tática que o foco Tática treina: chave e semanas do estilo dela (GDD-gestao 2). */

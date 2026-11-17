@@ -133,7 +133,7 @@ export interface ControleJogador {
   /** Treino do ciclo (tela 3): null mantém a decisão da IA, que vem em `ia`. */
   treino?(ciclo: Ciclo, ia: { carga: Carga; foco: Foco }, mem: Memoria): { carga: Carga; foco: Foco } | null;
   /** Próximo jogo (tela 5): titulares, ajustes do padrão, instruções individuais e batedores (5b1) e marcação individual (5b3, só para este jogo); null deixa com o auxiliar (IA e adaptação). */
-  escalar?(p: PedidoEscalacao, mem: Memoria): { titulares?: string[]; padrao?: Partial<PadraoTime>; instrucoes?: InstrucoesManuais; batedores?: Batedores; marcacao?: MarcacaoIndividual } | null;
+  escalar?(p: PedidoEscalacao, mem: Memoria): { titulares?: string[]; pouparTitulares?: boolean; padrao?: Partial<PadraoTime>; instrucoes?: InstrucoesManuais; batedores?: Batedores; marcacao?: MarcacaoIndividual } | null;
   /** Pausa da partida (8b1): o que mudar; null deixa com o auxiliar (IA). */
   pausa?(info: InfoPausa, jogo: InfoJogo, mem: Memoria): AjustePausa | null;
   /** Mercado do ciclo (8b2): o jogador age pelas funções de `mercadoJogador.ts`; null = delegado (a IA cuida do clube). */

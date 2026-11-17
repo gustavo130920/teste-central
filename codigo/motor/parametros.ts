@@ -81,6 +81,8 @@ export const GDD = {
     base: 7, fisicoBase: 0.7, fisicoPasso: 0.03, resistencia: 0.25, minimo: 3,
     custo: { '0': 0, P: 0.5, M: 1, G: 2 } as Record<string, number>,
     cobrir: 0.5, distancia: 0.5, preguicoso: 0.5, limiarEfeito: 70, passoEfeito: 15,
+    // Fator do gasto por posição (média do onze perto de 1); o goleiro gasta pouco.
+    goleiro: 0.3, posicao: { ZAG: 0.8, 'LAT-E': 1.1, 'LAT-D': 1.1, LAT: 1.1, VOL: 1, MC: 1.05, MO: 1, 'PON-E': 1.1, 'PON-D': 1.1, PON: 1.1, CA: 0.95 } as Record<string, number>,
   },
   impeto: { gol: 30, golSofrido: -20, defesaDificil: 10, decaimento: 10, ganhoCasa: 1.25, perdaGelo: 0.75, idolo: 10, faltaDura: 10, penaltiPerdido: -25, penaltiPerdidoOutro: 20 },
   liderQuedaMoral: 0.75,

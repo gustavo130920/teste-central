@@ -149,6 +149,8 @@ export interface EntradaTime {
   impeto?: number;
   /** Titulares escolhidos (clube do jogador, 8ª fatia): entram primeiro e sem rodízio; sem ele, os melhores 11. */
   titulares?: string[];
+  /** Com onze fixo, o auxiliar só troca quem está cansado (condição abaixo do limite de poupar). */
+  pouparTitulares?: boolean;
   /** Instruções individuais do jogador (5b1); sem elas, o melhor encaixe. */
   instrucoes?: InstrucoesManuais;
   /** Batedores (5b1); sem eles, o maior BP em campo. */

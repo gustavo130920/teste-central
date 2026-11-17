@@ -56,17 +56,28 @@ function pouparCansados(onze: (Jogador | null)[], elenco: Jogador[], pecas: Peca
 function escolherBanco(elenco: Jogador[], onze: (Jogador | null)[], pecas: PecaFormacao[]): Jogador[] {
   const resto = elenco.filter((j) => !onze.includes(j)).sort((a, b) => b.nota - a.nota || a.id.localeCompare(b.id));
   const banco: Jogador[] = [];
-  for (const pos of new Set(pecas.map((p) => p.posicao))) {
-    if (banco.length >= GDD.banco) break;
-    const opcoes = resto.filter((j) => !banco.includes(j) && notaNaVaga(j, pos) !== null);
-    if (opcoes.length) banco.push(opcoes.reduce((m, j) => (notaNaVaga(j, pos)! > notaNaVaga(m, pos)! ? j : m)));
+  const nativo = (j: Jogador, pos: Posicao): boolean => j.posicao === pos || j.secundarias.some((s) => s.posicao === pos || s.posicao === pos.slice(0, 3));
+  const melhor = (pos: Posicao, nativos: boolean): Jogador | undefined => {
+    const opcoes = resto.filter((j) => !banco.includes(j) && notaNaVaga(j, pos) !== null && (!nativos || nativo(j, pos)));
+    return opcoes.length ? opcoes.reduce((m, j) => (notaNaVaga(j, pos)! > notaNaVaga(m, pos)! ? j : m)) : undefined;
+  };
+  const posicoes = [...new Set(pecas.map((p) => p.posicao))];
+  // 1º: um de verdade (posição principal ou secundária) para cada posição da formação; 2º: um segundo para posições com 2+ vagas
+  // (zagueiros, laterais); 3º: quem tiver nota na posição; 4º: o resto por nota.
+  const dobradas = posicoes.filter((pos) => pecas.filter((p) => p.posicao === pos).length >= 2);
+  for (const [lista, nativos] of [[posicoes, true], [dobradas, true], [posicoes, false]] as [Posicao[], boolean][]) {
+    for (const pos of lista) {
+      if (banco.length >= GDD.banco) break;
+      const j = melhor(pos, nativos);
+      if (j) banco.push(j);
+    }
   }
   for (const j of resto) if (banco.length < GDD.banco && !banco.includes(j)) banco.push(j);
   return banco;
 }
 
 /** Liga cada jogador a uma vaga da formação sem a bola: mesma posição e mais perto primeiro. */
-function ligarSemBola(escalacao: { pos: Posicao; zona: number }[], sem: PecaFormacao[]): number[] {
+export function ligarSemBola(escalacao: { pos: Posicao; zona: number }[], sem: PecaFormacao[]): number[] {
   const pares: { i: number; v: number; difPos: number; d: number }[] = [];
   escalacao.forEach((e, i) => sem.forEach((p, v) => {
     const goleiroErrado = (e.pos === 'GOL') !== (p.posicao === 'GOL');
@@ -90,9 +101,10 @@ const formacao = (t: Tatica, nome: string): Formacao => {
 };
 
 /** Prévia dos 11 e da vaga de cada um, como o motor escala (tela de tática, 5b1). */
-export function previaDoOnze(elenco: Jogador[], tatica: Tatica, formacaoComBola: string, titulares?: string[], poupados?: string[]): { j: Jogador; vaga: Posicao }[] {
+export function previaDoOnze(elenco: Jogador[], tatica: Tatica, formacaoComBola: string, titulares?: string[], poupados?: string[], pouparTitulares = false): { j: Jogador; vaga: Posicao }[] {
   const com = formacao(tatica, formacaoComBola).pecas;
-  const onze = titulares ? escolherOnze(elenco, com, new Set(titulares)) : pouparCansados(escolherOnze(elenco, com), elenco, com, new Set(poupados ?? []));
+  const base = escolherOnze(elenco, com, titulares ? new Set(titulares) : undefined);
+  const onze = !titulares || pouparTitulares ? pouparCansados(base, elenco, com, new Set(poupados ?? [])) : base;
   return onze.flatMap((j, i) => (j ? [{ j, vaga: com[i].posicao }] : []));
 }
 
@@ -103,7 +115,8 @@ export function montarTime(indice: 0 | 1, ent: EntradaTime, tatica: Tatica, rng:
   const com = formacao(tatica, ent.tecnico.formacaoComBola).pecas;
   const sem = formacao(tatica, ent.tecnico.formacaoSemBola).pecas;
   // Titulares escolhidos pelo jogador: sem o rodízio do auxiliar.
-  const onze = ent.titulares ? escolherOnze(ent.elenco, com, new Set(ent.titulares)) : pouparCansados(escolherOnze(ent.elenco, com), ent.elenco, com, new Set(ent.poupados ?? []));
+  const base = escolherOnze(ent.elenco, com, ent.titulares ? new Set(ent.titulares) : undefined);
+  const onze = !ent.titulares || ent.pouparTitulares ? pouparCansados(base, ent.elenco, com, new Set(ent.poupados ?? [])) : base;
   const ligacao = ligarSemBola(com.map((p) => ({ pos: p.posicao, zona: zonaDeCodigo(p.zona) })), sem);
   const escalados: Escalado[] = onze.map((j, i) => {
     if (!j) throw new Error(`${ent.clube.id}: faltou jogador para ${com[i].posicao} (${ent.elenco.length} disponíveis, ${ent.elenco.filter((x) => x.posicao === 'GOL').length} goleiros)`);

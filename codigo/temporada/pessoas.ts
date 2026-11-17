@@ -94,12 +94,14 @@ const paisDoElenco = (elenco: Jogador[]): string => {
 };
 
 /** Safra da semana 1 (GDD-gestao 5). */
-export function novaSafra(m: Memoria, rng: Rng): void {
+export function novaSafra(m: Memoria, rng: Rng, brasileiros: readonly string[] = []): void {
+  // Início do jogo (nenhuma base ainda): cada clube brasileiro começa com 10 jovens (pedido de 16/11/2026).
+  const inicial = [...m.base.values()].every((b) => b.length === 0) ? new Set(brasileiros) : new Set<string>();
   for (const [clube, g] of m.gestao) {
     const estrutura = g.comissao.base ?? BASE.semEstrutura;
     const captacao = efetivo(g.comissao, 'Coord. base', 'Capt');
     const elenco = m.elencos[clube];
-    const { jovens, joias } = gerarSafra(clube, estrutura, captacao, elenco, paisDoElenco(elenco), () => `BASE-${++m.seq}`, m.nomes, rng);
+    const { jovens, joias } = gerarSafra(clube, estrutura, captacao, elenco, paisDoElenco(elenco), () => `BASE-${++m.seq}`, m.nomes, rng, inicial.has(clube) ? BASE.inicial : undefined);
     for (const j of jovens) m.evolucao.set(j.id, criarEvolucao(j));
     m.base.get(clube)!.push(...jovens);
     m.evo.joias += joias;

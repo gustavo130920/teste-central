@@ -4,6 +4,8 @@ import { Spinner } from '@/componentes/spinner';
 import { pedir } from '@/nucleo/cliente';
 import type { Carga, ElencoTela, Foco, LinhaElenco, TreinoTela } from '@/nucleo/protocolo';
 import { Base, Comercial } from '@/telas/BaseComercial';
+import { Comissao } from '@/telas/Comissao';
+import { Taticas } from '@/telas/Taticas';
 import { Mercado } from '@/telas/Mercado';
 import { Diretoria } from '@/telas/Diretoria';
 import { cn } from '@/lib/utils';
@@ -135,14 +137,17 @@ function Treino({ t, aoMudar, ocupado }: { t: TreinoTela; aoMudar: (p: { carga: 
             </li>
           ))}
         </ul>
-        <p className="mt-1 text-xs text-musgo">O foco Tática dá 100% à tática marcada para treino e 25% às outras. Trocar a tática de jogo e a de treino fica no pré-jogo.</p>
+        <p className="mt-1 text-xs text-musgo">O foco Tática dá 100% à tática marcada para treino e 25% às outras. Escolher a tática de jogo e a de treino fica na aba Táticas.</p>
       </div>
     </section>
   );
 }
 
-export function Gestao({ dia, aoVoltar }: { dia: number; aoVoltar: () => void }) {
-  const [aba, setAba] = useState<'elenco' | 'treino' | 'base' | 'comercial' | 'mercado' | 'diretoria'>('elenco');
+type Aba = 'elenco' | 'taticas' | 'treino' | 'base' | 'comercial' | 'comissao' | 'mercado' | 'diretoria';
+const ABAS = ['elenco', 'taticas', 'treino', 'mercado', 'comissao', 'base', 'comercial', 'diretoria'] as const;
+
+export function Gestao({ dia, aoVoltar, abaInicial = 'elenco' }: { dia: number; aoVoltar: () => void; abaInicial?: Aba }) {
+  const [aba, setAba] = useState<Aba>(abaInicial);
   const [elenco, setElenco] = useState<ElencoTela | null>(null);
   const [treino, setTreino] = useState<TreinoTela | null>(null);
   const [ocupado, setOcupado] = useState(false);
@@ -167,7 +172,7 @@ export function Gestao({ dia, aoVoltar }: { dia: number; aoVoltar: () => void })
       </header>
       <div role="tablist" aria-label="Áreas" className="mt-4 flex flex-wrap gap-2" onKeyDown={(ev) => {
         // Padrão ARIA de abas: setas, Home e End trocam a aba e levam o foco.
-        const abas = ['elenco', 'treino', 'mercado', 'base', 'comercial', 'diretoria'] as const;
+        const abas = ABAS;
         const i = abas.indexOf(aba);
         const j = ev.key === 'ArrowRight' ? (i + 1) % abas.length : ev.key === 'ArrowLeft' ? (i + abas.length - 1) % abas.length : ev.key === 'Home' ? 0 : ev.key === 'End' ? abas.length - 1 : -1;
         if (j < 0) return;
@@ -176,14 +181,14 @@ export function Gestao({ dia, aoVoltar }: { dia: number; aoVoltar: () => void })
         const lista = ev.currentTarget;
         setTimeout(() => lista.querySelectorAll<HTMLElement>('[role=tab]')[j]?.focus(), 0);
       }}>
-        {(['elenco', 'treino', 'mercado', 'base', 'comercial', 'diretoria'] as const).map((a) => (
+        {ABAS.map((a) => (
           <button key={a} role="tab" type="button" tabIndex={aba === a ? 0 : -1} aria-selected={aba === a} onClick={() => setAba(a)}
-            className={cn('rounded-md border px-4 py-1.5 text-sm', aba === a ? 'border-led bg-led/15 font-semibold text-led' : 'border-linha hover:bg-faixa')}>{{ elenco: 'Elenco', treino: 'Treino', mercado: 'Mercado', base: 'Base', comercial: 'Comercial', diretoria: 'Diretoria' }[a]}</button>
+            className={cn('rounded-md border px-4 py-1.5 text-sm', aba === a ? 'border-led bg-led/15 font-semibold text-led' : 'border-linha hover:bg-faixa')}>{{ elenco: 'Elenco', taticas: 'Táticas', treino: 'Treino', mercado: 'Mercado', base: 'Base', comercial: 'Comercial', comissao: 'Comissão', diretoria: 'Diretoria' }[a]}</button>
         ))}
       </div>
       {erro && <p role="alert" className="mt-3 text-cartao">{erro}</p>}
       <div className="mt-4" role="tabpanel">
-        {aba === 'diretoria' ? <Diretoria /> : aba === 'mercado' ? <Mercado /> : aba === 'base' ? <Base /> : aba === 'comercial' ? <Comercial />
+        {aba === 'taticas' ? <Taticas /> : aba === 'diretoria' ? <Diretoria /> : aba === 'mercado' ? <Mercado /> : aba === 'comissao' ? <Comissao /> : aba === 'base' ? <Base /> : aba === 'comercial' ? <Comercial />
           : !elenco || !treino ? <p className="flex items-center gap-2 text-musgo"><Spinner /> Carregando…</p>
           : aba === 'elenco' ? <Elenco e={elenco} dia={dia} /> : <Treino t={treino} aoMudar={mudar} ocupado={ocupado} />}
       </div>

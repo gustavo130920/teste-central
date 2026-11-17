@@ -228,7 +228,7 @@ export function* diaEmPassos(s: EstadoTemporada, g: Ganchos = {}): DiaEmPassos {
   const feitos: JogoDisputado[] = [];
   try {
     // Etapa 4, 3ª fatia: safra na semana 1 (GDD-gestao 5).
-    if (dia === 1 && comGestao) novaSafra(memoria, rngDe('safra'));
+    if (dia === 1 && comGestao) novaSafra(memoria, rngDe('safra'), ['serie-a', 'serie-b'].flatMap((l) => e.clubesPorLiga[l] ?? []));
     ctxDir.dia = dia;
     // 8b3: propostas ao técnico do jogador (no dia 1, antes das metas; depois, toda semana no fim do dia).
     if (dia === 1 && comDiretoria) cicloDoTecnico(memoria, ctxDir, ultimosDaB);
@@ -274,7 +274,7 @@ export function* diaEmPassos(s: EstadoTemporada, g: Ganchos = {}): DiaEmPassos {
         memoria.contagem.adaptacoes += 1;
         return aj.padrao;
       });
-      const entrada = (k: 0 | 1): EntradaTime => ({ ...(impeto[k] ? { impeto: impeto[k] } : {}), ...(plano[k]?.titulares ? { titulares: plano[k]!.titulares } : {}), ...(plano[k]?.instrucoes ? { instrucoes: plano[k]!.instrucoes } : {}), ...(plano[k]?.batedores ? { batedores: plano[k]!.batedores } : {}), ...(plano[k]?.marcacao ? { marcacao: plano[k]!.marcacao } : {}), ...e.entradas[lados[k]], elenco: prep[k].elenco, condicao: prep[k].condicao, poupados: prep[k].poupados, padrao: padrao[k] ?? e.entradas[lados[k]].padrao, apoio: prep[k].apoio, moral: prep[k].moral,
+      const entrada = (k: 0 | 1): EntradaTime => ({ ...(impeto[k] ? { impeto: impeto[k] } : {}), ...(plano[k]?.titulares ? { titulares: plano[k]!.titulares } : {}), ...(plano[k]?.pouparTitulares ? { pouparTitulares: true } : {}), ...(plano[k]?.instrucoes ? { instrucoes: plano[k]!.instrucoes } : {}), ...(plano[k]?.batedores ? { batedores: plano[k]!.batedores } : {}), ...(plano[k]?.marcacao ? { marcacao: plano[k]!.marcacao } : {}), ...e.entradas[lados[k]], elenco: prep[k].elenco, condicao: prep[k].condicao, poupados: prep[k].poupados, padrao: padrao[k] ?? e.entradas[lados[k]].padrao, apoio: prep[k].apoio, moral: prep[k].moral,
         ...(k === 0 && comDiretoria ? casa(lados[0], lados[1], j.competicao, decisao, !!jc?.neutro) : {}) });
       const kj = ([0, 1] as const).find((k) => ehDoJogador(lados[k]));
       const controle = kj !== undefined && (g.interativo || J!.pausa) ? controleDaPausa(memoria, lados[kj], kj) : undefined;

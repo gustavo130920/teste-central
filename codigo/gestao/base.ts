@@ -8,6 +8,8 @@ import { PERFIL, chavesDe, grupoDaPosicao } from './evolucao.ts';
 export const BASE = {
   jovens: { min: 3, div: 5 },
   idade: [16, 17],
+  /** Jovens da base de cada clube brasileiro no início do jogo (16/11/2026). */
+  inicial: 10,
   /** Pot comum: base 8 → 7 em 14/11/2026 (nota média dos elencos +0,80 → +0,24 com a joia 17-19). */
   pot: { base: 7, estrutura: 0.2, captacao: 0.15, variacao: 4, teto: 16 },
   /** Joia: `2% + (estrutura da base + Captação) × 0,05%` por jovem (peso 0,2 → 0,05 em 13/11/2026, GDD-gestao 12); Pot 17 a 19 (17-19 → 18-20 em 13/11/2026, de volta a 17-19 em 14/11/2026, com o mercado). PROVISORIO: o sorteio comum fica até 16. */
@@ -151,11 +153,11 @@ export function potencialDaSafra(estrutura: number, captacao: number, rng: Rng):
   return { pot: limitar(media + (rng.n() * 2 - 1) * b.pot.variacao, 3, b.pot.teto), joia: false };
 }
 
-export function gerarSafra(clube: string, estrutura: number, captacao: number, elenco: Jogador[], nacionalidade: string, proximoId: () => string, nomes: Nomes, rng: Rng): { jovens: Jogador[]; joias: number } {
+export function gerarSafra(clube: string, estrutura: number, captacao: number, elenco: Jogador[], nacionalidade: string, proximoId: () => string, nomes: Nomes, rng: Rng, quantos?: number): { jovens: Jogador[]; joias: number } {
   const jovens: Jogador[] = [];
   let joias = 0;
   const grupos = Object.entries(BASE.alvo).flatMap(([g, n]) => Array<string>(n).fill(g));
-  for (let i = 0; i < quantosNaSafra(estrutura); i++) {
+  for (let i = 0; i < (quantos ?? quantosNaSafra(estrutura)); i++) {
     const { pot, joia } = potencialDaSafra(estrutura, captacao, rng);
     if (joia) joias += 1;
     const nota = Math.max(3, pot - rng.int(BASE.nota[0], BASE.nota[1]));

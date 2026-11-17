@@ -169,10 +169,15 @@ test('GDD 6: exemplos de gasto de energia', () => {
   volante.j.atributos = { Res: 12 };
   const time = (fisico: number) => ({ notas: { Fisico: fisico }, efeitos: { coberturas: new Map() }, apoio: APOIO_NEUTRO }) as unknown as TimeEmCampo;
   // O exemplo do GDD soma +1 de Empenho Alto, que a IA ainda não usa: 11,18 − 1.
-  assert.ok(Math.abs(gastoBloco(volante, time(19)) - 10.18) < 1e-9);
+  // O fator de posição (MC 1,05) vem por cima da conta do GDD; o goleiro gasta 30%.
+  const fMC = 1.05;
+  assert.ok(Math.abs(gastoBloco(volante, time(19)) - 10.18 * fMC) < 1e-9);
   const normal = falsoEscalado('CE3', null, 0);
   normal.j.atributos = { Res: 10 };
-  assert.ok(Math.abs(gastoBloco(normal, time(10)) - 6.79) < 1e-9);
+  assert.ok(Math.abs(gastoBloco(normal, time(10)) - 6.79 * fMC) < 1e-9);
+  const gk = time(10);
+  (gk as unknown as { goleiro: Escalado }).goleiro = normal;
+  assert.ok(Math.abs(gastoBloco(normal, gk) - 6.79 * 0.3) < 1e-9);
   assert.equal(modEnergia(70), 0);
   assert.equal(modEnergia(52), -1);
   assert.equal(modEnergia(40), -2);

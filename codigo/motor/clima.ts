@@ -17,7 +17,9 @@ export function gastoBloco(e: Escalado, t: TimeEmCampo): number {
   const cobrir = (t.efeitos.coberturas.get(e) ?? 0) * g.cobrir;
   const longe = Math.max(0, distancia(e.zonaCom, e.zonaSem) - 2) * g.distancia;
   const preguica = e.j.defeitos.includes('Preguiçoso sem a bola') ? g.preguicoso : 0;
-  return Math.max(g.minimo, fisico + custo + cobrir + longe - resistencia - preguica - t.apoio.menosGasto);
+  const bruto = Math.max(g.minimo, fisico + custo + cobrir + longe - resistencia - preguica - t.apoio.menosGasto);
+  // O desgaste depende da posição: goleiro quase não corre, lateral e ponta correm o jogo todo.
+  return bruto * (e === t.goleiro ? g.goleiro : g.posicao[e.vaga] ?? 1);
 }
 
 /** -1 para cada 15 pontos abaixo de 70. */

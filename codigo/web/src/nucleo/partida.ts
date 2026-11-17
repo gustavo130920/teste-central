@@ -61,7 +61,8 @@ export function preJogo(c: Contexto, p: PedidoEscalacao, jogo: InfoJogoTela, nom
       entrosamento: progressoDe(c.mem, c.clube, c.tatica, x), ajustes: resumoPadrao(x),
       instrucoes: Object.values(x.instrucoes).reduce((s, i) => s + (i.Com ? 1 : 0) + (i.Sem ? 1 : 0), 0),
       batedores: { ...x.batedores },
-      onze: vagas(previaDoOnze(p.elenco, c.tatica, x.formacaoComBola, undefined, p.poupados)),
+      onze: vagas(previaDoOnze(p.elenco, c.tatica, x.formacaoComBola, x.titulares, p.poupados, x.pouparCansados !== false)),
+      titularesManual: !!x.titulares, poupar: x.pouparCansados !== false,
     })),
     elenco: p.elenco.map((j) => ({
       id: j.id, nome: j.nome, posicao: j.posicao, nota: j.nota, condicao: p.condicao[j.id] ?? 100,
@@ -74,11 +75,18 @@ export function preJogo(c: Contexto, p: PedidoEscalacao, jogo: InfoJogoTela, nom
 }
 
 /** Aplica a escolha do pré-jogo na tática salva e devolve o plano do jogo (titulares com o auxiliar). */
-export function aplicarPreJogo(c: Contexto, e: EscolhaPreJogo): RespostaEscalar {
+export function aplicarPreJogo(c: Contexto, e: EscolhaPreJogo, p: PedidoEscalacao): RespostaEscalar {
   const est = estadoTatica(c.mem, c.clube);
   if (e.tatica !== est.ativa && est.taticas[e.tatica]) usarTatica(c.mem, c.clube, c.tatica, e.tatica);
   for (const t of TIPOS) definirBatedor(c.mem, c.clube, t, e.batedores[t] ?? null);
-  return { ...planoDoJogo(c.mem, c.clube), ...(e.marcacao ? { marcacao: e.marcacao } : {}) };
+  // Onze escolhido no editor (5b4): só quem pode jogar; o motor completa o que faltar.
+  const ativa = est.taticas[est.ativa];
+  const livre = (ids?: string[]) => ids?.filter((id) => p.elenco.some((j) => j.id === id));
+  if (e.guardar && e.titulares) { ativa.titulares = [...new Set(e.titulares)].slice(0, 11); ativa.pouparCansados = e.poupar; }
+  if (e.guardar && !e.titulares) ativa.pouparCansados = e.poupar;
+  const manual = livre(e.titulares) ?? livre(ativa.titulares);
+  const poupar = e.titulares ? e.poupar : ativa.titulares ? e.poupar : false;
+  return { ...(manual?.length ? { titulares: manual, ...(poupar ? { pouparTitulares: true } : {}) } : {}), ...planoDoJogo(c.mem, c.clube), ...(e.marcacao ? { marcacao: e.marcacao } : {}) };
 }
 
 // ---------- Narração e estatísticas ----------

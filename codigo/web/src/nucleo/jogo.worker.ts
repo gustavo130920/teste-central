@@ -7,15 +7,20 @@ import type { Mundo } from '../../../temporada/virada.ts';
 import { cicloEmPassos, copasDe, tabelaAtual } from '../../../temporada/temporada.ts';
 import type { DiaEmPassos, JogoDisputado, RespostaDoDia } from '../../../temporada/temporada.ts';
 import type { AoVivo, Contexto } from './partida.ts';
-import type { PedidoColetiva, PedidoEvento } from '../../../temporada/jogador.ts';
+import type { PedidoColetiva, PedidoEscalacao, PedidoEvento } from '../../../temporada/jogador.ts';
 import type { PedidoPatrocinio, RespostaPatrocinio } from '../../../temporada/comercialJogador.ts';
 import type { PropostaTecnico } from '../../../temporada/diretoria.ts';
 import type { Meta, NivelMeta } from '../../../gestao/diretoria.ts';
 import { chanceDesistir } from '../../../temporada/comercialJogador.ts';
 import { ajusteDaResposta, aplicarPreJogo, fimJogo, infoJogoTela, novasLinhas, novoAoVivo, parcial, preJogo, telaPausa } from './partida.ts';
+import { contratar, custoDemissao, demitir, ehCargo, naJanela, pedidoDeRenovacao, renovar } from '../../../temporada/comissaoJogador.ts';
+import { efetivo } from '../../../gestao/comissao.ts';
+import { CARGOS } from '../../../motor/dados.ts';
+import type { Profissional } from '../../../motor/dados.ts';
+import { anoCalendario } from '../../../temporada/mercado.ts';
 import { estadoBase, dispensarJovem, pedirEmprestimo, subirJovem } from '../../../temporada/baseJogador.ts';
 import { amortizarDivida, estadoComercial, estrutura, iniciarObra, limiteEmprestimo, mesDoDia, mudarPrecos, tomarEmprestimo, COMERCIAL_JOGADOR } from '../../../temporada/comercialJogador.ts';
-import { acharJogador, alternarTransferivel, buscar, chanceDaNegociacao, enviar, iniciarCompra, iniciarRenovacao, luvasEmMi, observar, relatorio, responder, desligarManual } from '../../../temporada/mercadoJogador.ts';
+import { acharJogador, alternarTransferivel, buscar, chanceDaNegociacao, enviar, iniciarCompra, iniciarRenovacao, luvasEmMi, observar, relatorio, responder } from '../../../temporada/mercadoJogador.ts';
 import type { Visto } from '../../../temporada/mercadoJogador.ts';
 import type { Negociacao } from '../../../temporada/mercado.ts';
 import { folhaDoClube, orcamentoDe, tetoDe } from '../../../temporada/mercado.ts';
@@ -24,10 +29,12 @@ import { ver } from '../../../temporada/mercadoJogador.ts';
 import { MERCADO, janelaDaSemana, semanaDoDia } from '../../../gestao/mercado.ts';
 import { custoObra } from '../../../gestao/financas.ts';
 import { estadoTatica, progressoDe } from '../../../temporada/taticaJogador.ts';
+import { agirTatica, taticasTela } from './taticas.ts';
 import { assumirClube, criarTecnicoDoJogador } from '../../../temporada/jogador.ts';
 import { carregar, salvar } from '../../../temporada/salvamento.ts';
 import { comprimir, descomprimir, apagar, gravar, ler, listar } from './saves.ts';
 import type { Lance } from '../../../motor/tipos.ts';
+import type { PedidoTatica, ResultadoTatica, TaticasTela, ComissaoTela, PedidoComissao, ResultadoComissao, ProfTela } from './protocolo.ts';
 import type { Lance2D, DiretoriaTela, DecisaoTela, RespostaDecisao, FiltroTela, MercadoTela, NegTela, PedidoMercado, ResultadoMercado, TermosTela, VistoTela, BaseTela, ComercialTela, PedidoBase, PedidoComercial, ResultadoBase, ResultadoComercial, Carga, Foco, ElencoTela, TreinoTela, ClubeResumo, Etapa, EscolhaPreJogo, RespostaPausa, InfoSlot, JogoTela, NovoJogo, Painel, Pedido, Pedidos, Resposta, ResumoVirada, Slot, TipoPedido } from './protocolo.ts';
 
 const arquivos = import.meta.glob('../../../gerado/*.json', { eager: true, import: 'default' }) as Record<string, unknown>;
@@ -113,6 +120,8 @@ let viradaPend: { snap: string; a: AoVivo | null; linhas: ReturnType<typeof nova
 let decisoes: unknown[] = [];
 let nDec = 0;
 let pendente: PedidoDecisao | null = null;
+/** Pedido de escalação do pré-jogo aberto (quem pode jogar), para aplicar a escolha. */
+let pedidoPre: PedidoEscalacao | null = null;
 
 function abandonarCiclo(): void {
   ciclo?.it.return([]);
@@ -138,7 +147,8 @@ function ligar(w: Mundo): void {
   // Base, comercial e mercado (5d3b): manual quando o jogador escolheu; senão a IA.
   J.base = () => (extra.base?.manual ? 'manual' : extra.base?.idadeMinima ? { idadeMinima: extra.base.idadeMinima } : null);
   J.comercial = () => (extra.comercial ? 'manual' : null);
-  J.mercado = () => (extra.mercado ? true : null);
+  // O gestor é o jogador: o mercado é sempre manual (o diretor de futebol só aconselha).
+  J.mercado = () => true;
   // Decisões (5d3c): param o ciclo e perguntam à tela.
   J.evento = (p) => decidir<string>({ tipo: 'evento', p });
   J.coletiva = (p) => decidir<{ tom: string; assessoria: boolean }>({ tipo: 'coletiva', p });
@@ -248,7 +258,8 @@ async function conduzir(resposta: RespostaDoDia | undefined): Promise<Etapa> {
       const jogo = infoJogoTela(v.pedido.jogo, v.lado, clube.id, v.lado === 0 ? clube.estadio : w.clubes.find((x) => x.id === v.pedido.jogo.adversario)?.estadio ?? null, fase);
       c.aoVivo = novoAoVivo(jogo, v.pedido.jogo.dia);
       const e = c.reproduz?.shift();
-      if (e?.tipo === 'pre') { c.aoVivo.simular = e.e.modo === 'simular'; r = proximo(aplicarPreJogo(ctx, e.e)); continue; }
+      if (e?.tipo === 'pre') { c.aoVivo.simular = e.e.modo === 'simular'; r = proximo(aplicarPreJogo(ctx, e.e, v.pedido)); continue; }
+      pedidoPre = v.pedido;
       return { tipo: 'prejogo', pre: preJogo(ctx, v.pedido, jogo, nomesDe(w)) };
     }
     const a = c.aoVivo!;
@@ -309,7 +320,7 @@ function responderPreJogo(e: EscolhaPreJogo): Promise<Etapa> {
   if (!ciclo?.aoVivo || ciclo.aoVivo.info) throw new Error('Nenhum pré-jogo aberto.');
   ciclo.aoVivo.simular = e.modo === 'simular';
   ciclo.log.push({ tipo: 'pre', e });
-  return conduzir(aplicarPreJogo(contexto(w), e));
+  return conduzir(aplicarPreJogo(contexto(w), e, pedidoPre!));
 }
 
 function responderPausa(r: RespostaPausa): Promise<Etapa> {
@@ -389,6 +400,11 @@ function painel(w: Mundo): Painel {
     humor: mem.humor.get(id) ?? null,
     caixa: mem.financas.get(id)?.caixa ?? null,
     virada,
+    semClube: t.clubeId || !mem.carreira?.de ? null : (() => {
+      const h = [...mem.carreira.historico].reverse().find((x) => x.clube === mem.carreira!.de);
+      const motivo = ({ 'demissão': 'Você foi demitido pela diretoria.', contrato: 'Seu contrato acabou e não foi renovado.', 'novo dono': 'O novo dono da diretoria trocou o técnico.' } as Record<string, string>)[h?.fato ?? ''] ?? 'Você deixou o cargo.';
+      return { clube: w.clubes.find((x) => x.id === mem.carreira!.de)?.nome ?? mem.carreira.de, ano: h?.ano ?? w.ano, motivo };
+    })(),
   };
 }
 
@@ -428,6 +444,77 @@ function definirTreino(p: { carga: Carga; foco: Foco } | null): TreinoTela {
   const w = exigir();
   extra.treino = p;
   return treinoTela(w);
+}
+
+
+// ---------- Táticas (5b4) ----------
+function taticas(): TaticasTela {
+  const w = exigir();
+  return taticasTela(w.emAndamento!.memoria, extra.clubeTela, w.tatica, w.emAndamento!.dia);
+}
+
+function agirTaticas(p: PedidoTatica): ResultadoTatica {
+  const w = exigir();
+  if (ciclo) throw new Error('Termine ou cancele a partida antes de editar as táticas.');
+  return agirTatica(w.emAndamento!.memoria, extra.clubeTela, w.tatica, w.emAndamento!.dia, p);
+}
+
+/** Sai do pré-jogo sem jogar: o ciclo todo é descartado e o mundo volta ao estado de antes do Avançar. */
+function cancelarPreJogo(): Painel {
+  if (!ciclo?.aoVivo || ciclo.aoVivo.info || ciclo.log.length) throw new Error('Nenhum pré-jogo aberto.');
+  const snap = ciclo.snap;
+  abandonarCiclo();
+  return painel(restaurar(snap));
+}
+
+// ---------- Comissão (5f) ----------
+function comissaoTela(w: Mundo): ComissaoTela {
+  const s = w.emAndamento!;
+  const mem = s.memoria;
+  const id = extra.clubeTela;
+  const com = mem.gestao.get(id)?.comissao;
+  const c = mem.financas.get(id);
+  const ano = anoCalendario(mem.mercado!);
+  if (!com || com.fixo !== undefined) return { temComissao: false, janela: false, caixa: c?.caixa ?? null, folhaMil: 0, ano, ct: null, base: null, cargos: [] };
+  const tela = (p: Profissional, dono: boolean): ProfTela => ({
+    nome: p.nome, cargo: p.cargo, idade: p.idade, nac: p.nacionalidade,
+    atributos: Object.entries(p.atributos).map(([sigla, valor]) => ({ sigla, valor, efetivo: dono ? Math.round(efetivo(com, p.cargo, sigla) * 10) / 10 : null })),
+    reputacao: p.reputacao, ambicao: p.ambicao, lealdade: p.lealdade, quimica: p.quimica, confianca: p.homemDeConfianca, salario: p.salario, contrato: p.contrato,
+  });
+  const cargos = CARGOS.map((cargo) => {
+    const p = com.profissionais.find((x) => x.cargo === cargo) ?? null;
+    return {
+      cargo, atual: p ? tela(p, true) : null,
+      rescisaoMi: p ? Math.round(custoDemissao(mem, p, s.dia) * 100) / 100 : null, pedidoRenovacao: p ? pedidoDeRenovacao(p) : null,
+      livres: w.profissionaisLivres.filter((x) => x.cargo === cargo).sort((a, b) => b.reputacao - a.reputacao).map((x) => tela(x, false)),
+    };
+  });
+  return { temComissao: true, janela: naJanela(s.dia), caixa: c?.caixa ?? null, folhaMil: com.profissionais.reduce((t, p) => t + p.salario, 0), ano, ct: com.ct, base: com.base, cargos };
+}
+
+function agirComissao(p: PedidoComissao): ResultadoComissao {
+  const w = exigir();
+  const s = w.emAndamento!;
+  const id = extra.clubeTela;
+  let erro: string | null = null, aviso: string | null = null, resposta: ResultadoComissao['resposta'] = null;
+  const rep = w.clubes.find((c) => c.id === id)?.reputacao ?? 10;
+  if (!w.tecnicos.some((t) => t.humano && t.clubeId === id)) erro = 'Sem clube.';
+  else if (p.acao === 'contratar') {
+    const r = contratar(s.memoria, w, id, p.nome, p.oferta, p.anos, s.dia, rep);
+    erro = r.erro; resposta = r.resposta ?? null;
+    if (resposta?.tipo === 'aceita') aviso = p.nome + ' contratado.';
+  } else if (!ehCargo(p.cargo)) erro = 'Cargo inválido.';
+  else if (p.acao === 'demitir') {
+    const nome = s.memoria.gestao.get(id)?.comissao.profissionais.find((x) => x.cargo === p.cargo)?.nome ?? '';
+    const r = demitir(s.memoria, w, id, p.cargo, s.dia);
+    erro = r.erro;
+    if (!erro) aviso = nome + ' demitido (rescisão de R$ ' + r.custo.toFixed(2) + ' mi).';
+  } else {
+    const r = renovar(s.memoria, id, p.cargo, p.oferta, p.anos);
+    erro = r.erro; resposta = r.resposta ?? null;
+    if (resposta?.tipo === 'aceita') aviso = 'Contrato renovado.';
+  }
+  return { erro, aviso, resposta, tela: comissaoTela(w) };
 }
 
 // ---------- Base e comercial (5d3b1) ----------
@@ -534,7 +621,7 @@ function mercadoTela(w: Mundo, msg: string[] = []): MercadoTela {
   mm.avisos.length = 0;
   const negs = mm.negociacoes.filter((n) => n.clube === id && (n.estado === 'aberta' || n.estado === 'enviada')).map((n) => negTela(w, n)).filter((x): x is NegTela => !!x);
   return {
-    manual: extra.mercado ?? false,
+    manual: true,
     janela: jan === null ? 'fechado (renovação a qualquer momento)' : `janela aberta até a semana ${MERCADO.janelas[jan][1]}`,
     podeComprar: jan !== null, orcamento: orcamentoDe(mem, id), folha: Math.round(folhaDoClube(mem, id)), teto: Math.round(tetoDe(mem, id)), elenco: mem.elencos[id].length, caixa: fin?.caixa ?? null, avisos,
     propostas: mm.propostas.filter((p) => p.clube === id && p.estado === 'nova').map((p) => {
@@ -566,12 +653,9 @@ function agirMercado(p: PedidoMercado): ResultadoMercado {
   if (!mm) throw new Error('Esta temporada não tem mercado.');
   let erro: string | null = null;
   let msg: string | null = null;
-  if (p.acao === 'modo') {
-    extra.mercado = p.manual;
-    // O ciclo faz isto no gancho; aqui vale já (compras e propostas só resolvem com o manual ligado).
-    if (p.manual) mm.manual.add(id); else desligarManual(mem, id);
-  } else if (!w.tecnicos.some((t) => t.humano && t.clubeId === id)) erro = 'Sem clube.';
-  else if (!extra.mercado) erro = 'Assuma o mercado ("Eu cuido") para negociar.';
+  mm.manual.add(id);
+  if (p.acao === 'modo') { /* sem efeito: o mercado é sempre do jogador */ }
+  else if (!w.tecnicos.some((t) => t.humano && t.clubeId === id)) erro = 'Sem clube.';
   else if (p.acao === 'comprar') { const n = iniciarCompra(mem, id, p.id, s.dia, p.pre); if (typeof n === 'string') erro = n; else msg = 'Negociação aberta (veja em Negociações).'; }
   else if (p.acao === 'renovar') { const n = iniciarRenovacao(mem, id, p.id); if (typeof n === 'string') erro = n; else msg = 'Renovação aberta (veja em Negociações).'; }
   else if (p.acao === 'observar') msg = observar(mem, id, p.id);
@@ -703,6 +787,11 @@ const tratar: Tratador = {
   chanceMercado: (p) => chanceMercado(p),
   base: () => baseTela(exigir()),
   agirBase: (p) => agirBase(p),
+  taticas: () => taticas(),
+  agirTatica: (p) => agirTaticas(p),
+  cancelarPreJogo: () => cancelarPreJogo(),
+  comissao: () => comissaoTela(exigir()),
+  agirComissao: (p) => agirComissao(p),
   comercial: () => comercialTela(exigir()),
   agirComercial: (p) => agirComercial(p),
   slots: () => listar(),

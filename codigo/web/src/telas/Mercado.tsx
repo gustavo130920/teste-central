@@ -132,11 +132,7 @@ export function Mercado() {
   return (
     <section aria-labelledby="mercado" className="space-y-5">
       <h2 id="mercado" className="text-lg font-semibold">Mercado <span className="text-sm font-normal text-musgo">{t.janela}</span></h2>
-      <div className="flex flex-wrap gap-2" role="group" aria-label="Quem cuida">
-        <Button variant={t.manual ? 'secondary' : 'default'} disabled={ocupado} onClick={() => agir({ acao: 'modo', manual: false })}>Diretor cuida</Button>
-        <Button variant={t.manual ? 'default' : 'secondary'} disabled={ocupado} onClick={() => agir({ acao: 'modo', manual: true })}>Eu cuido</Button>
-      </div>
-      <p className="text-sm text-musgo">{t.manual ? 'Você negocia à mão. Cada rodada leva um ciclo; a resposta chega no ciclo seguinte. Voltar ao diretor fecha o que estiver aberto.' : 'O diretor de futebol cuida do mercado, como a IA. Assuma para comprar, renovar e responder propostas.'}</p>
+      <p className="text-sm text-musgo">Você é o gestor: compra, vende e renova à mão. Cada rodada leva um ciclo; a resposta chega no ciclo seguinte. O diretor de futebol só aconselha e avisa.</p>
       <dl className="grid grid-cols-2 gap-3 border-y py-2 sm:grid-cols-4">
         {[['Orçamento de transferências', mi(t.orcamento)], ['Folha / teto', `${t.folha.toLocaleString('pt-BR')} / ${t.teto.toLocaleString('pt-BR')} mil`], ['Elenco', String(t.elenco)], ['Caixa', t.caixa === null ? '—' : mi(t.caixa)]].map(([a, b]) => (
           <div key={a}><dt className="text-xs text-musgo">{a}</dt><dd className="font-semibold">{b}</dd></div>

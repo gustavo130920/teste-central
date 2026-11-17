@@ -14,7 +14,8 @@
     "tipos": "tsc --noEmit",
     "pretest": "node conversor/converter.ts",
     "test": "node --test testes/*.test.ts",
-    "clube": "node terminal/clube.ts"
+    "clube": "node terminal/clube.ts",
+    "pessoal": "node conversor/converter.ts && node pessoal/aplicar.mjs"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",

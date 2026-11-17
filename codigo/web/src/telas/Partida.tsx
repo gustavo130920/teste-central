@@ -174,6 +174,7 @@ function PainelPausa({ v, p, ocupado, erro, aoResponder }: { v: AoVivoTela; p: T
   useEffect(() => { titulo.current?.focus(); }, []);
   const lado = v.jogo.lado;
   const outro = lado === 0 ? 1 : 0;
+  const vagaSai = p.emCampo.find((x) => x.id === sai)?.vaga ?? '';
   const nomeDe = (id: string) => p.emCampo.find((x) => x.id === id)?.nome ?? p.banco.find((x) => x.id === id)?.nome ?? p.rival.find((x) => x.id === id)?.nome ?? id;
 
   const nomeIns = (id: string) => p.emCampo.flatMap((e) => [...(e.opcoes?.Com ?? []), ...(e.opcoes?.Sem ?? [])]).find((o) => o.id === id)?.nome ?? id;
@@ -258,7 +259,7 @@ function PainelPausa({ v, p, ocupado, erro, aoResponder }: { v: AoVivoTela; p: T
                 <Escolha rotulo="Sai" valor={sai} aoMudar={setSai} opcoes={[{ valor: '', texto: '—' }, ...p.emCampo.filter((e) => !trocas.some(([s]) => s === e.id)).map((e) => ({
                   valor: e.id, texto: `${e.vaga} ${e.nome} · energia ${e.energia}${e.amarelos ? ' · amarelo' : ''}${e.lesao ? ` · lesão ${e.lesao}` : ''}`,
                 }))]} />
-                <Escolha rotulo="Entra" valor={entra} aoMudar={setEntra} opcoes={[{ valor: '', texto: '—' }, ...p.banco.filter((j) => !trocas.some(([, e]) => e === j.id)).map((j) => ({ valor: j.id, texto: `${j.posicao} ${j.nome} · nota ${j.nota}` }))]} />
+                <Escolha rotulo="Entra" valor={entra} aoMudar={setEntra} opcoes={[{ valor: '', texto: '—' }, ...p.banco.filter((j) => !trocas.some(([, e]) => e === j.id)).sort((a, b) => Number(b.posicao === vagaSai) - Number(a.posicao === vagaSai) || b.nota - a.nota).map((j) => ({ valor: j.id, texto: `${j.posicao === vagaSai ? '★ ' : ''}${j.posicao} ${j.nome} · nota ${j.nota} · cond. ${j.condicao ?? 100}%` }))]} />
                 <Button variant="secondary" disabled={!sai || !entra || restantes <= 0} onClick={() => { setTrocas((t) => [...t, [sai, entra]]); setSai(''); setEntra(''); }}>Incluir</Button>
               </div>
               <ul className="mt-2 text-sm">
@@ -269,7 +270,7 @@ function PainelPausa({ v, p, ocupado, erro, aoResponder }: { v: AoVivoTela; p: T
                   </li>
                 ))}
               </ul>
-              <p className="mt-1 text-xs text-musgo">Restam {restantes} troca(s). Em campo, energia de 0 a 100.</p>
+              <p className="mt-1 text-xs text-musgo">Restam {restantes} troca(s). ★ = reserva da mesma posição de quem sai. Em campo, energia de 0 a 100.</p>
             </div>
             <fieldset disabled={!p.intervalo}>
               <legend className="mb-1 font-semibold">Fala do intervalo</legend>

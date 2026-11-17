@@ -158,6 +158,8 @@ function Virada({ p }: { p: P }) {
 
 export function Painel({ painel: p, aoAvancar, aoGestao, ocupado, aoSair, erro }: { painel: P; aoAvancar: () => void; aoGestao: () => void; ocupado: boolean; aoSair: () => void; erro: string | null }) {
   const [salvando, setSalvando] = useState(false);
+  const chaveSemClube = p.semClube ? `${p.semClube.ano}-${p.semClube.clube}` : '';
+  const [visto, setVisto] = useState('');
   const botao = useRef<HTMLButtonElement>(null);
   useHotkeys('a', () => { if (!ocupado && !salvando) aoAvancar(); }, [ocupado, salvando, aoAvancar]);
   useHotkeys('e', () => { if (!ocupado && p.tecnico.clube) aoGestao(); }, [ocupado, aoGestao, p.tecnico.clube]);
@@ -168,6 +170,23 @@ export function Painel({ painel: p, aoAvancar, aoGestao, ocupado, aoSair, erro }
   );
   return (
     <div className="mx-auto max-w-6xl px-4 pb-10">
+      {p.semClube && (
+        <Dialog open={visto !== chaveSemClube} onOpenChange={() => undefined}>
+          <DialogContent className="max-w-lg border-cartao" showCloseButton={false} onEscapeKeyDown={(e) => e.preventDefault()} onInteractOutside={(e) => e.preventDefault()}>
+            <DialogHeader>
+              <DialogTitle className="text-2xl text-cartao">Você está sem clube</DialogTitle>
+              <DialogDescription>{p.semClube.motivo} Saída do {p.semClube.clube}, em {p.semClube.ano}.</DialogDescription>
+            </DialogHeader>
+            <p className="text-sm text-musgo">Agora o mundo segue sem você. Propostas de emprego chegam a cada poucas semanas, conforme sua reputação; avance o calendário para recebê-las.</p>
+            <Button autoFocus onClick={() => setVisto(chaveSemClube)}>Entendi</Button>
+          </DialogContent>
+        </Dialog>
+      )}
+      {p.semClube && (
+        <p role="alert" className="mt-3 rounded-md border border-cartao bg-cartao/15 px-3 py-2 font-semibold text-cartao">
+          Sem clube desde a saída do {p.semClube.clube} ({p.semClube.ano}). {p.semClube.motivo}
+        </p>
+      )}
       <header className="flex flex-wrap items-center justify-between gap-3 border-b py-3">
         <div className="flex min-w-0 items-center gap-3">
           <Cores cores={p.clube.cores} className="h-7 w-5" />

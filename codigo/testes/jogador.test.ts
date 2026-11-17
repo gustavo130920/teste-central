@@ -7,11 +7,13 @@ import type { ControleJogador } from '../temporada/jogador.ts';
 import { assumirClube, confiancaInicial, criarTecnicoDoJogador } from '../temporada/jogador.ts';
 
 const CLUBE = 'ABA';
+// A demissão de ABA no 1º ano com a base inicial (16/11/2026) separa o técnico do jogador da IA; BAR segue sem demissão.
+const CLUBE_DELEGACAO = 'BAR';
 
-function mundo() {
+function mundo(CLUBE_ = CLUBE) {
   const base = carregarBase();
   const m = criarMundo(base);
-  m.eventos = { modelos: base.eventos, imprensa: base.imprensa, cenario: 'avancar', clubes: [CLUBE], texto: null };
+  m.eventos = { modelos: base.eventos, imprensa: base.imprensa, cenario: 'avancar', clubes: [CLUBE_], texto: null };
   return { base, m };
 }
 
@@ -31,21 +33,21 @@ test('jogador: técnico pela origem, assumir o clube e paciência pela Reputaç�
 });
 
 test('jogador: delegação total dá os mesmos jogos da IA', () => {
-  const a = mundo();
+  const a = mundo(CLUBE_DELEGACAO);
   const ja = jogarAno(a.m, 5);
-  const b = mundo();
+  const b = mundo(CLUBE_DELEGACAO);
   // Mesmo técnico (Reputação igual à do clube: Confiança inicial 60, como na IA), marcado como do jogador.
-  const tec = b.m.tecnicos.find((t) => t.clubeId === CLUBE)!;
+  const tec = b.m.tecnicos.find((t) => t.clubeId === CLUBE_DELEGACAO)!;
   tec.humano = true;
-  assert.equal(tec.reputacao, b.m.clubes.find((c) => c.id === CLUBE)!.reputacao);
+  assert.equal(tec.reputacao, b.m.clubes.find((c) => c.id === CLUBE_DELEGACAO)!.reputacao);
   let chamadas = 0;
   const nulo = () => { chamadas += 1; return null; };
-  b.m.jogador = { clube: CLUBE, evento: nulo, coletiva: nulo, treino: nulo, escalar: nulo, meta: nulo, pausa: nulo, aoCiclo: () => { chamadas += 1; } };
+  b.m.jogador = { clube: CLUBE_DELEGACAO, evento: nulo, coletiva: nulo, treino: nulo, escalar: nulo, meta: nulo, pausa: nulo, aoCiclo: () => { chamadas += 1; } };
   const jb = jogarAno(b.m, 5);
   assert.ok(chamadas > 100);
   assert.equal(jb.jogos.length, ja.jogos.length);
   for (let i = 0; i < ja.jogos.length; i++) assert.deepEqual(jb.jogos[i].placar, ja.jogos[i].placar, `jogo ${i}`);
-  assert.equal(b.m.memoria!.diretoria.get(CLUBE)!.confianca, a.m.memoria!.diretoria.get(CLUBE)!.confianca);
+  assert.equal(b.m.memoria!.diretoria.get(CLUBE_DELEGACAO)!.confianca, a.m.memoria!.diretoria.get(CLUBE_DELEGACAO)!.confianca);
 });
 
 test('jogador: escolhas manuais valem (meta, treino, titulares, padrão e coletiva)', () => {

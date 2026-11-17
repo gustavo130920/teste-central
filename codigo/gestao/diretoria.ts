@@ -32,7 +32,7 @@ export const PMG = { P: 3, M: 7, G: 15 } as const;
 export const DIRETORIA = {
   confianca: {
     inicial: 60, min: 0, max: 100,
-    vitoria: 1, derrota: -1, classico: 2, // derrota −2 → −1 (Gustavo, 15/11/2026)
+    vitoria: 2, derrota: -1, classico: 2, goleada: 1.5, // derrota −2 → −1 (Gustavo, 15/11/2026); vitória 1 → 2 e goleada (3+ gols) ×1,5 pelo feedback de 16/11/2026
     /** 5 jogos seguidos sem vencer: −M (a contagem zera ao aplicar). */
     semVencer: 5,
     /** Quedas × (1,4 − Paciência ÷ 25) × (1 − Blindagem ÷ 50). */
@@ -77,7 +77,7 @@ export const DIRETORIA = {
 
 export const TORCIDA = {
   humor: { inicial: 50, min: 0, max: 100, volta: 1 },
-  vitoria: 1, derrota: -1, classico: 3,
+  vitoria: 2, derrota: -2, classico: 3, goleada: 1.5, // vitória e derrota 1 → 2 e goleada ×1,5 (feedback de 16/11/2026)
   /** Quedas por perfil (GDD-gestao 9). */
   quedas: { 'Gigante rico': 1.2, 'Gigante endividado': 1.2, 'Pequeno sobrevivente': 0.8 } as Record<string, number>,
   /** PROVISORIO: grande contratação = compra (não livre) com nota acima da média dos 11 melhores do elenco + 1. */

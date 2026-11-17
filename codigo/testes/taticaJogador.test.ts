@@ -152,3 +152,42 @@ test('5b1: no ano, o foco Tática vai para a tática marcada para treino', () =>
   const semanasB = base.tatica.estilos.find((e) => e.nome === outro)!.entrosamentoSemanas;
   assert.ok((g.treino.taticas.get(chaveB)?.progresso ?? 0) >= semanasB * 0.99, 'tática B treinada até completar');
 });
+
+test('5b4: editor edita as variações com e sem bola, o onze e a tela mostra as duas formações', async () => {
+  const { taticasTela, agirTatica } = await import('../web/src/nucleo/taticas.ts');
+  const mem = memoriaFalsa();
+  const g = mem.gestao.get('ALA')!;
+  (mem as unknown as { elencos: unknown }).elencos = { ALA: base.elencos.ALA };
+  (mem as unknown as { jogadores: unknown }).jogadores = new Map();
+  const outraFormacao = (nome: string) => base.tatica.formacoes.find((f) => f.nome !== nome)!.nome;
+  const t0 = taticasTela(mem, 'ALA', base.tatica, 1);
+  assert.equal(t0.taticas[0].onze.length, 11);
+  const sem = outraFormacao(g.tecnico.formacaoSemBola);
+  const r = agirTatica(mem, 'ALA', base.tatica, 1, { acao: 'editar', i: 0, formacaoSemBola: sem });
+  assert.equal(r.erro, null);
+  assert.equal(r.tela.taticas[0].formacaoSemBola, sem);
+  assert.equal(g.tecnico.formacaoSemBola, sem, 'na tática em uso o técnico acompanha');
+  // Duplicar não muda a tática em uso; editar a cópia não toca no técnico.
+  assert.equal(agirTatica(mem, 'ALA', base.tatica, 1, { acao: 'duplicar', i: 0 }).erro, null);
+  const com = outraFormacao(g.tecnico.formacaoComBola);
+  const r2 = agirTatica(mem, 'ALA', base.tatica, 1, { acao: 'editar', i: 1, formacaoComBola: com });
+  assert.equal(r2.tela.ativa, 0);
+  assert.equal(g.tecnico.formacaoComBola, r2.tela.taticas[0].formacaoComBola);
+  assert.equal(r2.tela.taticas[1].onze.length, 11);
+  // Instrução por variação e troca no onze.
+  const p = r2.tela.taticas[1].onze.find((x) => x.vagaCom !== 'GOL' && x.opcoes.Sem.length)!;
+  const ins = p.opcoes.Sem[0].id;
+  const r3 = agirTatica(mem, 'ALA', base.tatica, 1, { acao: 'instrucao', i: 1, jogador: p.id, fase: 'Sem', id: ins });
+  assert.equal(r3.tela.taticas[1].onze.find((x) => x.id === p.id)!.instrSem, ins);
+  assert.equal(r3.tela.taticas[0].onze.find((x) => x.id === p.id)?.instrSem ?? null, null);
+  const fora = r3.tela.elenco.find((j) => j.posicao === p.vagaCom && !r3.tela.taticas[1].onze.some((x) => x.id === j.id))!;
+  // Goleiro reserva no lugar de linha: sem vaga, a troca é recusada e o onze não muda.
+  const goleiro = r3.tela.elenco.find((j) => j.posicao === 'GOL' && !r3.tela.taticas[1].onze.some((x) => x.id === j.id))!;
+  assert.ok(agirTatica(mem, 'ALA', base.tatica, 1, { acao: 'titular', i: 1, sai: p.id, entra: goleiro.id }).erro);
+  const r4 = agirTatica(mem, 'ALA', base.tatica, 1, { acao: 'titular', i: 1, sai: p.id, entra: fora.id });
+  assert.equal(r4.erro, null);
+  assert.ok(r4.tela.taticas[1].titularesManual);
+  assert.ok(r4.tela.taticas[1].onze.some((x) => x.id === fora.id));
+  assert.equal(agirTatica(mem, 'ALA', base.tatica, 1, { acao: 'titular', i: 1 }).tela.taticas[1].titularesManual, false);
+  assert.ok(agirTatica(mem, 'ALA', base.tatica, 1, { acao: 'editar', i: 1, estilo: 'Inexistente' }).erro);
+});

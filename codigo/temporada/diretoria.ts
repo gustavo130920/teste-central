@@ -176,10 +176,11 @@ export function jogoNaDiretoria(mem: Memoria, ctx: CtxDiretoria, clube: Clube, a
   const c = DIRETORIA.confianca;
   const t = TORCIDA;
   const res = pro > contra ? 1 : pro < contra ? -1 : 0;
-  if (res) humor(mem, clube.id, (res > 0 ? t.vitoria : t.derrota) * (classico ? t.classico : 1));
+  const goleada = Math.abs(pro - contra) >= 3;
+  if (res) humor(mem, clube.id, (res > 0 ? t.vitoria : t.derrota) * (classico ? t.classico : 1) * (goleada ? t.goleada : 1));
   if (!st) return;
   st.semVencer = res > 0 ? 0 : st.semVencer + 1;
-  let d = res ? (res > 0 ? c.vitoria : c.derrota) * (classico ? c.classico : 1) : 0;
+  let d = res ? (res > 0 ? c.vitoria : c.derrota) * (classico ? c.classico : 1) * (goleada ? c.goleada : 1) : 0;
   if (st.semVencer >= c.semVencer) { d -= PMG.M; st.semVencer = 0; }
   if (d) confianca(mem, ctx, clube.id, d);
 }

@@ -24,6 +24,7 @@ export default function App() {
   const [ajuda, setAjuda] = useState(false);
   const [decisao, setDecisao] = useState<DecisaoTela | null>(null);
   const [aoVivo, setAoVivo] = useState<AoVivoTela | null>(null);
+  const [abaGestao, setAbaGestao] = useState<'elenco' | 'taticas'>('elenco');
   const tela = pilha.at(-1)!;
   const raiz = useRef<HTMLDivElement>(null);
 
@@ -58,6 +59,18 @@ export default function App() {
     setPilha(['painel', simulando ? 'fim' : 'partida']);
   };
   const pedindo = useRef(false);
+  /** Sai do pré-jogo sem jogar: o Worker descarta o ciclo (o mundo volta ao de antes do Avançar). `editar` abre o editor de táticas. */
+  const saindoDoPreJogo = async (editar: boolean) => {
+    if (pedindo.current) return;
+    pedindo.current = true;
+    setOcupado(true);
+    setErro(null);
+    try {
+      setPainel(await pedir('cancelarPreJogo'));
+      setPre(null);
+      if (editar) { setAbaGestao('taticas'); setPilha(['painel', 'gestao']); } else setPilha(['painel']);
+    } catch (e) { setErro((e as Error).message); } finally { pedindo.current = false; setOcupado(false); }
+  };
   const etapa = async (f: () => Promise<Etapa>, simulando = false) => {
     // Um pedido por vez: clique e atalho no mesmo instante não mandam a resposta duas vezes.
     if (pedindo.current) return;
@@ -88,11 +101,12 @@ export default function App() {
       )}
       {tela === 'painel' && painel && (
         <Painel painel={painel} ocupado={ocupado} erro={erro} aoSair={() => setPilha(['inicio'])}
-          aoAvancar={() => etapa(() => pedir('avancar'))} aoGestao={() => ir('gestao')} />
+          aoAvancar={() => etapa(() => pedir('avancar'))} aoGestao={() => { setAbaGestao('elenco'); ir('gestao'); }} />
       )}
-      {tela === 'gestao' && painel && <Gestao dia={painel.dia} aoVoltar={voltar} />}
+      {tela === 'gestao' && painel && <Gestao dia={painel.dia} aoVoltar={voltar} abaInicial={abaGestao} />}
       {tela === 'prejogo' && pre && (
-        <PreJogo pre={pre} ocupado={ocupado} erro={erro} aoJogar={(e) => etapa(() => pedir('preJogo', e), e.modo === 'simular')} />
+        <PreJogo pre={pre} ocupado={ocupado} erro={erro} aoJogar={(e) => etapa(() => pedir('preJogo', e), e.modo === 'simular')}
+          aoVoltar={() => saindoDoPreJogo(false)} aoEditar={() => saindoDoPreJogo(true)} />
       )}
       {tela === 'partida' && aoVivo && (
         <Partida v={aoVivo} ocupado={ocupado} erro={erro} aoResponder={(r) => etapa(() => pedir('pausa', r), !!r.simularResto)} aoVerFim={() => setPilha(['painel', 'fim'])} />
